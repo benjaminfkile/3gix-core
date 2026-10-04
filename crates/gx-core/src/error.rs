@@ -2,7 +2,9 @@
 //!
 //! Every rule in `matter-format.md` section 4 (validation), and the field
 //! rules of sections 3.2 (header), 3.3 (sample block), and 3.4 (empty
-//! section) it refers to, has its own numeric code. A failing check reports
+//! section) it refers to, has its own numeric code. So does every rule of
+//! section 5 (frame registry), both the rules one registry can be checked
+//! against and the rules across the union of a build's registries. A failing check reports
 //! exactly one [`ValidationError`]: the code of the first rule that failed and
 //! a human-readable reason naming the offending field.
 //!
@@ -15,7 +17,8 @@
 //! | 300 to 399 | geometry: cell edge and origin |
 //! | 400 to 499 | sample block: resolution, lengths, empty rules, zstd |
 //! | 500 to 599 | channel values, including the vacuum rules |
-//! | 600 to 699 | reserved for the frame registry (section 5) |
+//! | 600 to 649 | frame registry, one registry (section 5.1 to 5.3) |
+//! | 650 to 699 | frame registry, union of registries (section 5.2) |
 //! | 700 to 799 | reserved for the hub container (section 6) |
 //! | 800 to 899 | compositing (section 3.5) |
 //!
@@ -164,7 +167,74 @@ pub mod codes {
     /// A vacuum sample has an attenuation other than 0.
     pub const VACUUM_ATTENUATION_NONZERO: u16 = 526;
 
-    // 600 to 699: reserved for the frame registry (section 5).
+    // 600 to 649: one frame registry (sections 5.1, 5.2, and 5.3).
+
+    /// Fewer than 24 bytes, so there is no complete registry header.
+    pub const REGISTRY_HEADER_TOO_SHORT: u16 = 601;
+    /// The registry magic is not `0x33 0x47 0x52 0x47`.
+    pub const REGISTRY_BAD_MAGIC: u16 = 602;
+    /// Registry `format_version` is not 1.
+    pub const REGISTRY_UNSUPPORTED_VERSION: u16 = 603;
+    /// The reserved `u16` at header offset 6 is not 0.
+    pub const REGISTRY_RESERVED_U16_NONZERO: u16 = 604;
+    /// The reserved `u32` at header offset 20 is not 0.
+    pub const REGISTRY_RESERVED_U32_NONZERO: u16 = 605;
+    /// `epoch` is NaN or infinite.
+    pub const REGISTRY_EPOCH_NOT_FINITE: u16 = 606;
+    /// The input length is not exactly `24 + 144 * frame_count`.
+    pub const REGISTRY_LENGTH_MISMATCH: u16 = 607;
+    /// More frames than a `u32` `frame_count` can hold were given to the Rust
+    /// constructor. Reachable only through the Rust API.
+    pub const REGISTRY_TOO_MANY_FRAMES: u16 = 608;
+    /// A record's 7 reserved bytes at offset 25 are not all 0.
+    pub const FRAME_RESERVED_NONZERO: u16 = 611;
+    /// A record's `frame_id` is lower than the previous record's: records are
+    /// not sorted ascending.
+    pub const FRAME_NOT_SORTED: u16 = 612;
+    /// Two records in one registry have the same `frame_id`.
+    pub const FRAME_DUPLICATE_ID: u16 = 613;
+    /// `root_extent` is NaN or infinite.
+    pub const FRAME_EXTENT_NOT_FINITE: u16 = 614;
+    /// `root_extent` is zero or negative.
+    pub const FRAME_EXTENT_NOT_POSITIVE: u16 = 615;
+    /// `max_depth` is above 31.
+    pub const FRAME_MAX_DEPTH_OUT_OF_RANGE: u16 = 616;
+    /// `mass` is NaN or infinite.
+    pub const FRAME_MASS_NOT_FINITE: u16 = 617;
+    /// `mass` is negative.
+    pub const FRAME_MASS_NEGATIVE: u16 = 618;
+    /// A component of `position` is NaN or infinite.
+    pub const FRAME_POSITION_NOT_FINITE: u16 = 619;
+    /// A component of `velocity` is NaN or infinite.
+    pub const FRAME_VELOCITY_NOT_FINITE: u16 = 620;
+    /// A component of `orientation` is NaN or infinite.
+    pub const FRAME_ORIENTATION_NOT_FINITE: u16 = 621;
+    /// `orientation` is not a unit quaternion within `1e-9`.
+    pub const FRAME_ORIENTATION_NOT_UNIT: u16 = 622;
+    /// A component of `angular_velocity` is NaN or infinite.
+    pub const FRAME_ANGULAR_VELOCITY_NOT_FINITE: u16 = 623;
+    /// A root frame has a `position` other than 0.
+    pub const ROOT_POSITION_NONZERO: u16 = 624;
+    /// A root frame has a `velocity` other than 0.
+    pub const ROOT_VELOCITY_NONZERO: u16 = 625;
+
+    // 650 to 699: the union of a build's registries (section 5.2). Not byte
+    // rules of one registry.
+
+    /// Two registries in the union have different `epoch` bit patterns.
+    pub const UNION_EPOCH_MISMATCH: u16 = 651;
+    /// A `frame_id` is declared by more than one registry in the union.
+    pub const UNION_DUPLICATE_ID: u16 = 652;
+    /// The union has no root frame (this includes a union with no frames).
+    pub const UNION_NO_ROOT: u16 = 653;
+    /// The union has more than one root frame.
+    pub const UNION_MULTIPLE_ROOTS: u16 = 654;
+    /// A frame's `parent_frame_id` is not a frame in the union.
+    pub const UNION_PARENT_MISSING: u16 = 655;
+    /// Following parents from some frame never reaches the root: the frames
+    /// form a cycle.
+    pub const UNION_CYCLE: u16 = 656;
+
     // 700 to 799: reserved for the hub container (section 6).
 
     // 800 to 899: compositing (section 3.5). Not byte rules.

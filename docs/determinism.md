@@ -9,6 +9,13 @@ The hub's promise is that one fingerprint means one byte sequence. Every functio
 - No hash map iteration, no clock, no randomness, no environment input.
 - Sums such as `Section::mass` and the weighted means in `composite` run in `f64` in a fixed order (sample index order, then input order) with plain operators: no fused multiply add, no SIMD reductions.
 
+## How the registry encoder keeps the promise
+
+- Fixed layout: the 24-byte header and 144-byte records of `matter-format.md` section 5, little-endian, reserved bytes written as 0.
+- Records are always in `frame_id` order: `Registry::new` sorts, and `decode` rejects unsorted input rather than reordering it.
+- Every `f64` is written with its exact bit pattern, including negative zero.
+- The conformance generator builds orientations from rational unit quaternions, so no platform trigonometry enters the vectors.
+
 ## zstd is part of the format
 
 A compressed section's bytes depend on the zstd implementation and level, not only on the sample block. These are pinned:
@@ -22,9 +29,9 @@ Decoding is not affected: any conforming zstd decoder reads any conforming frame
 
 ## The proof
 
-`tools/conformance-gen` regenerates `conformance/matter/` from code with fixed values and a fixed-seed generator written in the tool. Two checks run it:
+`tools/conformance-gen` regenerates `conformance/matter/` and `conformance/registry/` from code with fixed values and a fixed-seed generator written in the tool. Two checks run it:
 
 - `cargo test -p conformance-gen` runs the generator into a scratch directory and compares every file to the checked-in copy byte for byte.
-- `scripts/ci.sh` runs it into `target/conformance-check` and fails on any `diff -r` difference against `conformance/matter`.
+- `scripts/ci.sh` runs it into `target/conformance-check` and fails on any `diff -r` difference against `conformance/matter` or `conformance/registry`.
 
-To refresh the vectors after an intended change: `rm -rf conformance/matter && cargo run -p conformance-gen -- conformance`.
+To refresh the vectors after an intended change: `rm -rf conformance/matter conformance/registry && cargo run -p conformance-gen -- conformance`.

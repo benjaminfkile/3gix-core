@@ -1,0 +1,147 @@
+{
+  "cases": {
+    "cycle": {
+      "code": 656,
+      "files": [
+        "valid-a.bin",
+        "cycle.bin"
+      ],
+      "outcome": "error"
+    },
+    "duplicate-id": {
+      "code": 652,
+      "files": [
+        "valid-a.bin",
+        "duplicate-of-a.bin"
+      ],
+      "outcome": "error"
+    },
+    "epoch-mismatch": {
+      "code": 651,
+      "files": [
+        "valid-a.bin",
+        "valid-b-later-epoch.bin"
+      ],
+      "outcome": "error"
+    },
+    "missing-parent": {
+      "code": 655,
+      "files": [
+        "valid-a.bin",
+        "missing-parent.bin"
+      ],
+      "outcome": "error"
+    },
+    "no-root": {
+      "code": 653,
+      "files": [
+        "valid-b.bin",
+        "empty.bin"
+      ],
+      "outcome": "error"
+    },
+    "only-empty": {
+      "code": 653,
+      "files": [
+        "empty.bin",
+        "empty.bin"
+      ],
+      "outcome": "error"
+    },
+    "self-parent": {
+      "code": 656,
+      "files": [
+        "valid-a.bin",
+        "self-parent.bin"
+      ],
+      "outcome": "error"
+    },
+    "two-roots": {
+      "code": 654,
+      "files": [
+        "valid-a.bin",
+        "second-root.bin"
+      ],
+      "outcome": "error"
+    },
+    "valid-pair": {
+      "files": [
+        "valid-a.bin",
+        "valid-b.bin"
+      ],
+      "frame_count": 7,
+      "outcome": "ok",
+      "paths_to_root": {
+        "1": [
+          1
+        ],
+        "10": [
+          10,
+          1
+        ],
+        "20": [
+          20,
+          1
+        ],
+        "30": [
+          30,
+          1
+        ],
+        "31": [
+          31,
+          30,
+          1
+        ],
+        "40": [
+          40,
+          1
+        ],
+        "50": [
+          50,
+          1
+        ]
+      },
+      "root": 1
+    },
+    "valid-pair-reversed-with-empty": {
+      "files": [
+        "empty.bin",
+        "valid-b.bin",
+        "valid-a.bin"
+      ],
+      "frame_count": 7,
+      "outcome": "ok",
+      "paths_to_root": {
+        "1": [
+          1
+        ],
+        "10": [
+          10,
+          1
+        ],
+        "20": [
+          20,
+          1
+        ],
+        "30": [
+          30,
+          1
+        ],
+        "31": [
+          31,
+          30,
+          1
+        ],
+        "40": [
+          40,
+          1
+        ],
+        "50": [
+          50,
+          1
+        ]
+      },
+      "root": 1
+    }
+  }
+}

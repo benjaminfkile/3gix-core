@@ -29,6 +29,7 @@ step "4b. conformance vectors regenerate byte for byte"
 rm -rf target/conformance-check
 cargo run -p conformance-gen --release -- target/conformance-check
 diff -r target/conformance-check/matter conformance/matter
+diff -r target/conformance-check/registry conformance/registry
 
 step "5. cargo build wasm32"
 cargo build -p gx-core --release --target wasm32-unknown-unknown
