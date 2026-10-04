@@ -38,6 +38,10 @@ Rust stable. Targets: the host triple for native builds and `wasm32-unknown-unkn
 Cargo.toml           virtual workspace (members crates/* and tools/*)
 rust-toolchain.toml  pinned Rust toolchain, components, and wasm32 target
 crates/gx-core/      the core library: rlib, C ABI cdylib, and WebAssembly exports
+  src/units.rs       branded SI quantities, Vec3, Quat
+  src/key.rs         chunk keys and cell geometry
+  tests/             integration tests, including the conformance vector checks
+conformance/         conformance vectors (keys.json) any implementation must pass
 include/gx_core.h    hand-written C header for the C ABI
 tools/gpu-probe/     headless GPU compute probe (wgpu over Vulkan)
 scripts/             ci.sh, the vocabulary lint, and its word list

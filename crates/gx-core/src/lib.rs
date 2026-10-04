@@ -1,7 +1,17 @@
 //! Core library: matter format, units, laws, and the C ABI shim.
 //!
-//! This is currently a skeleton. Only the format version and a placeholder
-//! validator are exported.
+//! Implemented so far:
+//!
+//! - [`units`]: branded SI quantities and the [`units::Vec3`] and
+//!   [`units::Quat`] math types (`matter-format.md` section 1, principles).
+//! - [`key`]: chunk key parsing and printing, and cell geometry
+//!   (`matter-format.md` section 2, chunk keys, and section 3.1, cell
+//!   geometry).
+//!
+//! The C ABI validator is still a placeholder.
+
+pub mod key;
+pub mod units;
 
 /// Version of the matter format this library reads and writes.
 pub const FORMAT_VERSION: u32 = 1;
