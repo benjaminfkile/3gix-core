@@ -1,6 +1,7 @@
 #!/bin/sh
-# Full local CI: toolchain versions, format, lint, tests, WebAssembly build,
-# headless GPU compute probe, vocabulary lint, native shared library check.
+# Full local CI: toolchain versions, format, lint, tests, conformance vector
+# regeneration, WebAssembly build, headless GPU compute probe, vocabulary lint,
+# native shared library check.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -23,6 +24,11 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 step "4. cargo test"
 cargo test --workspace
+
+step "4b. conformance vectors regenerate byte for byte"
+rm -rf target/conformance-check
+cargo run -p conformance-gen --release -- target/conformance-check
+diff -r target/conformance-check/matter conformance/matter
 
 step "5. cargo build wasm32"
 cargo build -p gx-core --release --target wasm32-unknown-unknown

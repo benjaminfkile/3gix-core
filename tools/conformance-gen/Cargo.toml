@@ -1,0 +1,11 @@
+[package]
+name = "conformance-gen"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+gx-core = { path = "../../crates/gx-core" }
+serde_json = "1"
+# Same exact version as gx-core, so frames match the encoder byte for byte.
+zstd = "=0.14.0"

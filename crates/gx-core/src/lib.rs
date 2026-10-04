@@ -7,10 +7,17 @@
 //! - [`key`]: chunk key parsing and printing, and cell geometry
 //!   (`matter-format.md` section 2, chunk keys, and section 3.1, cell
 //!   geometry).
+//! - [`matter`]: matter section encode, decode, validate, and composite
+//!   (`matter-format.md` section 3, matter section, with 3.5 compositing, and
+//!   section 4, validation, for matter sections).
+//! - [`error`]: [`error::ValidationError`] and the stable numeric code table
+//!   for every section 4 rule (`docs/errors.md`).
 //!
 //! The C ABI validator is still a placeholder.
 
+pub mod error;
 pub mod key;
+pub mod matter;
 pub mod units;
 
 /// Version of the matter format this library reads and writes.
