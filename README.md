@@ -6,7 +6,8 @@ The shared library of the 3GIX space runtime. It is the only place the renderer,
 
 - **Matter format.** The one wire format a compiler emits, the hub validates, and the renderer reads: a density field sampled on a regular grid over a cell of space, with physical material properties per sample. Encoder, decoder, validator.
 - **Units.** Branded SI types. Bare numbers do not enter the encoder.
-- **Laws.** Implemented: reference frames with a floating origin (`frames::FrameSystem`, with `relative` as the camera-relative primitive and `nearest_frame` for re-parenting), Newtonian gravity from point masses and from coarse density grids (`gravity`, `G = 6.67430e-11 m^3 kg^-1 s^-2`, no softening), and a fixed-step symplectic N-body integrator (`integrate`, velocity Verlet or fourth order Yoshida, the default) that moves every frame under the gravity of every massive frame, O(n^2) per stage, and turns every frame at its constant angular velocity. Explicitly not implemented: relativity (Newtonian gravity is the law), torques (angular velocity stays constant), collisions between frames, and fluid relaxation to the equipotential surface. Blackbody radiance from temperature is a separate law still to come.
+- **Laws.** Implemented: reference frames with a floating origin (`frames::FrameSystem`, with `relative` as the camera-relative primitive and `nearest_frame` for re-parenting), Newtonian gravity from point masses and from coarse density grids (`gravity`, `G = 6.67430e-11 m^3 kg^-1 s^-2`, no softening), and a fixed-step symplectic N-body integrator (`integrate`, velocity Verlet or fourth order Yoshida, the default) that moves every frame under the gravity of every massive frame, O(n^2) per stage, and turns every frame at its constant angular velocity. Explicitly not implemented: relativity (Newtonian gravity is the law), torques (angular velocity stays constant), collisions between frames, and fluid relaxation to the equipotential surface. Also implemented: blackbody radiance from temperature (`radiance`, Planck's law per wavelength and integrated over three fixed bands), emitter summaries of hot matter (`emission`), extinction for volumetric matter (`extinction`), and octree cell selection for a camera (`lod`). Every law function, its units, and its determinism contract are listed in `docs/laws.md`.
+- **Bands.** Format version 1 fixes three wavelength bands, `radiance::BAND_EDGES = [700e-9, 600e-9, 500e-9, 400e-9]` meters: band 0 is 600 to 700 nm, band 1 is 500 to 600 nm, band 2 is 400 to 500 nm. A sample's three albedo values map to these bands in this order, and every per-band law output is band 0 first. Band radiance is a 64-point midpoint rule per band, fixed as part of the deterministic contract.
 - **Chunk keys and the frame registry.** Encoding, decoding, and validation.
 - **Hub container.** Decoding of the container the hub stores per chunk, with every table entry bounds checked. The hub's layer ids are read past and dropped.
 - **C ABI.** `gx_format_version`, `gx_validate`, and `gx_error_name`, exported from a native shared library so a .NET hub or a compiler in any language can call the validator.
@@ -48,6 +49,11 @@ crates/gx-core/      the core library: rlib, C ABI cdylib, and WebAssembly expor
                      floating origin, nearest frame
   src/gravity.rs     Newtonian gravity from point masses and coarse grids
   src/integrate.rs   symplectic N-body integrator: Verlet and Yoshida4
+  src/radiance.rs    blackbody radiance per wavelength and per band
+  src/emission.rs    hot matter of a section summarized as one emitter
+  src/extinction.rs  extinction coefficient, transmittance, optical depth
+  src/lod.rs         octree cell selection for a camera
+  src/detmath.rs     deterministic exp, expm1, and tan for the laws
   src/container.rs   hub container: decode a chunk of matter sections or of
                      registries, and encode one for tests
   src/validate.rs    top-level validator: matter or registry chosen by key
@@ -56,7 +62,8 @@ crates/gx-core/      the core library: rlib, C ABI cdylib, and WebAssembly expor
   src/lib.rs         C ABI (gx_format_version, gx_validate, gx_error_name)
                      and the wasm32 exports
   tests/             integration tests, including the conformance vector checks
-                     and the orbit tests (laws.rs)
+                     the orbit tests (laws.rs), and the radiance,
+                     emission, and extinction checks (radiance_laws.rs)
 conformance/         conformance vectors any implementation must pass
   keys.json          chunk key vectors
   matter/valid/      valid sections (.bin) with expected decode results (.json)
@@ -78,8 +85,8 @@ tools/conformance-gen/  regenerates conformance/matter/,
                      deterministically
 scripts/             ci.sh, the vocabulary lint, and its word list
 docs/                toolchain record, error codes (errors.md), determinism
-                     rules (determinism.md); format specification once it
-                     moves here
+                     rules (determinism.md), law reference (laws.md);
+                     format specification once it moves here
 ```
 
 ## Using from C, .NET, or WebAssembly

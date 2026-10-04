@@ -23,6 +23,17 @@
 //! - [`integrate`]: a fixed-step symplectic N-body integrator over the frame
 //!   registry, velocity Verlet or fourth order Yoshida (`space-model.md`
 //!   sections 5 and 6).
+//! - [`radiance`]: blackbody radiance per wavelength and per band from
+//!   temperature, with the three fixed bands of format version 1
+//!   (`space-model.md` sections 1 and 2, `matter-format.md` section 3.3,
+//!   derived quantities).
+//! - [`emission`]: the hot matter of a section summarized as one emitter
+//!   (`space-model.md` sections 2 and 8, `matter-format.md` section 3.3).
+//! - [`extinction`]: extinction coefficient, transmittance, and optical
+//!   depth through a section's grid (`space-model.md` sections 2 and 8,
+//!   `matter-format.md` section 3.3).
+//! - [`lod`]: octree cell selection for a camera (`space-model.md` sections
+//!   2 and 5, `matter-format.md` section 3.1).
 //! - [`container`]: the hub container that holds every section of one chunk,
 //!   decoded and bounds checked (`matter-format.md` section 6).
 //! - [`validate()`]: the top-level validator that dispatches between matter
@@ -38,12 +49,17 @@
 use core::ffi::c_char;
 
 pub mod container;
+mod detmath;
+pub mod emission;
 pub mod error;
+pub mod extinction;
 pub mod frames;
 pub mod gravity;
 pub mod integrate;
 pub mod key;
+pub mod lod;
 pub mod matter;
+pub mod radiance;
 pub mod registry;
 pub mod units;
 pub mod validate;

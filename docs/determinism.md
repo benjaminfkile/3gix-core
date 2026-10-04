@@ -38,8 +38,9 @@ To refresh the vectors after an intended change: `rm -rf conformance/matter conf
 
 ## How the laws keep the promise
 
-The laws (`frames`, `gravity`, `integrate`) produce no hub bytes, but they are held to the same rule so that a renderer and a conformance check agree bit for bit on where every frame is at a given time.
+The laws (`frames`, `gravity`, `integrate`, `radiance`, `emission`, `extinction`, `lod`) produce no hub bytes, but they are held to the same rule so that a renderer and a conformance check agree bit for bit on where every frame is at a given time.
 
 - Frames are always visited by ascending `frame_id`, and gravity sources are summed in that order. No hash map is iterated.
 - Only `+`, `-`, `*`, `/`, and `sqrt` are used, all correctly rounded in IEEE 754. No platform `sin`, `cos`, or `cbrt`: the Yoshida coefficients come from a written-out cube root of 2, and orientations advance by `normalize(q + 0.5 * dt * q * (0, w))` with no trigonometry.
 - `advance` splits an interval into `ceil(|interval| / max_step)` equal steps and sets the time to exactly the target at the end.
+- `radiance`, `extinction`, and `lod` need `exp` and `tan`. These are written out in `detmath` from correctly rounded operations, never taken from the platform math library. `band_radiance` uses a fixed 64-point midpoint rule per band. See `laws.md`.
