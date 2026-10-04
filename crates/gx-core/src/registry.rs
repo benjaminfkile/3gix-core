@@ -60,11 +60,12 @@ pub struct Frame {
     pub max_depth: u8,
     /// Authoritative gravitational mass of the frame.
     pub mass: Kilograms,
-    /// Position of the frame origin in meters relative to the parent at the
-    /// epoch, in parent axes. Zero for a root.
+    /// Position of the frame origin in meters relative to the parent origin
+    /// at the epoch, in root axes (translations add along the parent chain
+    /// without rotation, see [`crate::frames`]). Zero for a root.
     pub position: Vec3,
     /// Velocity of the frame origin in meters per second relative to the
-    /// parent at the epoch, in parent axes. Zero for a root.
+    /// parent at the epoch, in root axes. Zero for a root.
     pub velocity: Vec3,
     /// Unit quaternion giving the frame axes relative to the parent axes at
     /// the epoch.
