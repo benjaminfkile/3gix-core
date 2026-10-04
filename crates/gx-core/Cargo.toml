@@ -1,0 +1,15 @@
+[package]
+name = "gx-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "gx_core"
+crate-type = ["rlib", "cdylib"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

@@ -30,17 +30,22 @@ The architecture and the byte-level format are specified in the hub repository u
 
 Rust stable. Targets: the host triple for native builds and `wasm32-unknown-unknown` for the browser. `wasm-pack` drives WebAssembly builds. `cargo fmt --check`, `cargo clippy -- -D warnings`, and `cargo test` must pass on every change.
 
+`sh scripts/ci.sh` runs the full check locally: toolchain versions, format, clippy, tests, the WebAssembly build and `wasm-opt`, the headless GPU compute probe, the vocabulary lint, and the native shared library build. See `docs/toolchain.md` for the last recorded run.
+
 ## Layout
 
 ```
-crates/            Rust crates (the core library, the C ABI shim, tooling probes)
-conformance/       golden byte files and expected results
-docs/              format specification once it moves here
-scripts/           the vocabulary lint and other CI helpers
+Cargo.toml           virtual workspace (members crates/* and tools/*)
+rust-toolchain.toml  pinned Rust toolchain, components, and wasm32 target
+crates/gx-core/      the core library: rlib, C ABI cdylib, and WebAssembly exports
+include/gx_core.h    hand-written C header for the C ABI
+tools/gpu-probe/     headless GPU compute probe (wgpu over Vulkan)
+scripts/             ci.sh, the vocabulary lint, and its word list
+docs/                toolchain record; format specification once it moves here
 ```
 
 ## Contributing rules
 
-- No domain words anywhere in this repository: no earth, planet, moon, sun, star, solar, terrain, ocean, sea, water, land, sky, atmosphere, sphere, globe, and no proper noun for any body. The lint enforces this.
+- No domain words anywhere in this repository: nothing from `scripts/vocab-banned.txt`, and no proper noun for any body. `scripts/vocab-lint.sh` enforces the list.
 - No infrastructure identifiers, secrets, hostnames, or LAN addresses in code, history, docs, or CI output. This repository is public.
 - No em or en dashes in any text.
