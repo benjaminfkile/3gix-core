@@ -1,0 +1,10 @@
+[package]
+name = "gpu-probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+wgpu = "30"
+pollster = "1"
+bytemuck = "1"
