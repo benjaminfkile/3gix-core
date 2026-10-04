@@ -1,0 +1,67 @@
+{
+  "edge": {
+    "bits": "0x41086a0000000000",
+    "decimal": "2e5"
+  },
+  "flags": 0,
+  "key": "4-5-17-3-30",
+  "mass": {
+    "bits": "0x43c6349bdf11a29f",
+    "decimal": "3.2001502999985024e18"
+  },
+  "origin": [
+    {
+      "bits": "0x41086a0000000000",
+      "decimal": "2e5"
+    },
+    {
+      "bits": "0xc143d62000000000",
+      "decimal": "-2.6e6"
+    },
+    {
+      "bits": "0x41455cc000000000",
+      "decimal": "2.8e6"
+    }
+  ],
+  "resolution": 2,
+  "sample_count": 8,
+  "state_counts": {
+    "fluid": 0,
+    "gas": 3,
+    "plasma": 2,
+    "solid": 1,
+    "vacuum": 2
+  },
+  "sums": {
+    "albedo": [
+      {
+        "bits": "0x400a000010000000",
+        "decimal": "3.2500001192092896e0"
+      },
+      {
+        "bits": "0x400b99998a000000",
+        "decimal": "3.4499998837709427e0"
+      },
+      {
+        "bits": "0x400d33332c000000",
+        "decimal": "3.6499999463558197e0"
+      }
+    ],
+    "attenuation": {
+      "bits": "0x3fe851eb8e000000",
+      "decimal": "7.600000165402889e-1"
+    },
+    "density": {
+      "bits": "0x40a9004cf41f1450",
+      "decimal": "3.2001502999985023e3"
+    },
+    "roughness": {
+      "bits": "0x4017333334000000",
+      "decimal": "5.800000011920929e0"
+    },
+    "temperature": {
+      "bits": "0x40cb760000000000",
+      "decimal": "1.406e4"
+    }
+  }
+}

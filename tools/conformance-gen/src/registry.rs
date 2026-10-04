@@ -378,12 +378,22 @@ struct Case {
     code: Option<u16>,
 }
 
-fn union() -> Vec<File> {
+/// `union/valid-a.bin`: the root and its four children.
+pub(crate) fn valid_a() -> Registry {
     let mut a = vec![root()];
     a.extend(children());
+    registry(EPOCH, a)
+}
+
+/// `union/valid-b.bin`: the frames that hang below `valid_a`'s children.
+pub(crate) fn valid_b() -> Registry {
+    registry(EPOCH, vec![grandchild(), far_child()])
+}
+
+fn union() -> Vec<File> {
     let regs: [(&str, Registry); 9] = [
-        ("valid-a", registry(EPOCH, a)),
-        ("valid-b", registry(EPOCH, vec![grandchild(), far_child()])),
+        ("valid-a", valid_a()),
+        ("valid-b", valid_b()),
         ("empty", registry(EPOCH, vec![])),
         (
             "valid-b-later-epoch",

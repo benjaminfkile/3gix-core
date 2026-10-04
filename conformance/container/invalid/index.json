@@ -1,0 +1,19 @@
+{
+  "key": "4-5-17-3-30",
+  "vectors": {
+    "102-section-bad-magic.bin": 102,
+    "701-too-short.bin": 701,
+    "702-count-negative.bin": 702,
+    "703-table-truncated.bin": 703,
+    "704-id-len-negative.bin": 704,
+    "705-id-not-utf8.bin": 705,
+    "706-codec-len-negative.bin": 706,
+    "707-codec-unsupported.bin": 707,
+    "708-offset-negative.bin": 708,
+    "709-length-negative.bin": 709,
+    "710-entry-overlap.bin": 710,
+    "711-entry-gap.bin": 711,
+    "712-entry-past-end.bin": 712,
+    "713-trailing-bytes.bin": 713
+  }
+}

@@ -8,7 +8,8 @@ The shared library of the 3GIX space runtime. It is the only place the renderer,
 - **Units.** Branded SI types. Bare numbers do not enter the encoder.
 - **Laws.** Newtonian gravity from point masses and coarse density grids, a symplectic N-body integrator, reference frame transforms with a floating origin, equipotential relaxation for fluid matter, blackbody radiance from temperature.
 - **Chunk keys and the frame registry.** Encoding, decoding, and validation.
-- **C ABI.** `gx_format_version` and `gx_validate`, exported from a native shared library so a .NET hub or a compiler in any language can call the validator.
+- **Hub container.** Decoding of the container the hub stores per chunk, with every table entry bounds checked. The hub's layer ids are read past and dropped.
+- **C ABI.** `gx_format_version`, `gx_validate`, and `gx_error_name`, exported from a native shared library so a .NET hub or a compiler in any language can call the validator.
 - **WebAssembly build.** The same crate for the browser renderer and sandboxed compilers.
 - **Conformance vectors.** Golden sections and registries any second implementation must pass.
 - **Vocabulary lint.** A CI script consumers run that fails on domain words in source.
@@ -30,7 +31,7 @@ The architecture and the byte-level format are specified in the hub repository u
 
 Rust stable. Targets: the host triple for native builds and `wasm32-unknown-unknown` for the browser. `wasm-pack` drives WebAssembly builds. `cargo fmt --check`, `cargo clippy -- -D warnings`, and `cargo test` must pass on every change.
 
-`sh scripts/ci.sh` runs the full check locally: toolchain versions, format, clippy, tests, regeneration of the conformance vectors with a byte-for-byte diff against `conformance/matter` and `conformance/registry`, the WebAssembly build and `wasm-opt`, the headless GPU compute probe, the vocabulary lint, and the native shared library build. See `docs/toolchain.md` for the last recorded run.
+`sh scripts/ci.sh` runs the full check locally: toolchain versions, format, clippy, tests, regeneration of the conformance vectors with a byte-for-byte diff against `conformance/matter`, `conformance/registry`, and `conformance/container`, the WebAssembly build, a check that the generated TypeScript declarations carry the three exports, `wasm-opt`, the headless GPU compute probe, the vocabulary lint, the native shared library build, and the C ABI check program. See `docs/toolchain.md` for the last recorded run.
 
 ## Layout
 
@@ -43,7 +44,13 @@ crates/gx-core/      the core library: rlib, C ABI cdylib, and WebAssembly expor
   src/matter.rs      matter sections: encode, decode, validate, composite
   src/registry.rs    frame registry: encode, decode, validate, and the union
                      of a build's registries as a frame tree
-  src/error.rs       ValidationError and the stable numeric error codes
+  src/container.rs   hub container: decode a chunk of matter sections or of
+                     registries, and encode one for tests
+  src/validate.rs    top-level validator: matter or registry chosen by key
+  src/error.rs       ValidationError, the stable numeric error codes, and
+                     their short names
+  src/lib.rs         C ABI (gx_format_version, gx_validate, gx_error_name)
+                     and the wasm32 exports
   tests/             integration tests, including the conformance vector checks
 conformance/         conformance vectors any implementation must pass
   keys.json          chunk key vectors
@@ -55,15 +62,28 @@ conformance/         conformance vectors any implementation must pass
                      file name to expected code
   registry/union/    registries and index.json listing union cases: which
                      files merge and the expected tree or code
+  container/valid/   a matter chunk and a registry chunk with expected results
+  container/invalid/ one file per container code, index.json maps file name
+                     to expected code
 include/gx_core.h    hand-written C header for the C ABI
+tools/abi-check/     C program that links the shared library through the header
 tools/gpu-probe/     headless GPU compute probe (wgpu over Vulkan)
-tools/conformance-gen/  regenerates conformance/matter/ and
-                     conformance/registry/ deterministically
+tools/conformance-gen/  regenerates conformance/matter/,
+                     conformance/registry/, and conformance/container/
+                     deterministically
 scripts/             ci.sh, the vocabulary lint, and its word list
 docs/                toolchain record, error codes (errors.md), determinism
                      rules (determinism.md); format specification once it
                      moves here
 ```
+
+## Using from C, .NET, or WebAssembly
+
+The native build (`cargo build -p gx-core --release`) produces `target/release/libgx_core.so`. Its C ABI is declared in `include/gx_core.h`: `gx_format_version`, `gx_validate` (one section under one chunk key, matter or registry chosen by the key), and `gx_error_name`. The buffer and return code contract is in `docs/errors.md`.
+
+- **C and C++.** Include `gx_core.h` and link `-lgx_core`. `tools/abi-check/abi_check.c` is a complete caller; `scripts/ci.sh` builds it with the system `cc` and runs it against the conformance vectors.
+- **.NET.** P/Invoke the same symbols from `libgx_core`: `size_t` maps to `nuint`, `uint8_t*` and `char*` to `byte*` or `byte[]`, and the return value to `int`.
+- **WebAssembly.** `wasm-pack build crates/gx-core --target web` produces a package with three exports: `format_version()`, `validate(key, bytes)`, which throws an `Error` with message `CODE: REASON`, and `decode_chunk_mass(key, bytes)`, the total mass in kilograms of every section in a hub container. The C ABI symbols are exported from the WebAssembly module too.
 
 ## Contributing rules
 

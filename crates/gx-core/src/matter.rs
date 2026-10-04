@@ -1002,7 +1002,7 @@ fn nearest(i: usize, coarse: usize, fine: usize) -> usize {
     ((2 * i + 1) * coarse) / (2 * fine)
 }
 
-/// Composites sections from several layers into one (section 3.5).
+/// Composites sections from several compilers into one (section 3.5).
 ///
 /// All inputs must share key (802), origin (803), and edge (804); an empty
 /// list fails with 801. Every non-empty input is resampled to the finest
