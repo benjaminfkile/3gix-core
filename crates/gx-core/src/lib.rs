@@ -14,6 +14,15 @@
 //!   union of a build's registries as a [`registry::FrameTree`]
 //!   (`matter-format.md` section 5, frame registry: header 5.1, frame
 //!   records and union rules 5.2, empty registry 5.3).
+//! - [`frames`]: reference frames with a floating origin, the current state
+//!   of every frame, and the transforms between frames (`space-model.md`
+//!   section 5, numerical devices, and section 6, time).
+//! - [`gravity`]: Newtonian gravity from point masses and coarse density
+//!   grids (`space-model.md` section 5, gravity between all frames, and
+//!   section 6, integration of every massive frame).
+//! - [`integrate`]: a fixed-step symplectic N-body integrator over the frame
+//!   registry, velocity Verlet or fourth order Yoshida (`space-model.md`
+//!   sections 5 and 6).
 //! - [`container`]: the hub container that holds every section of one chunk,
 //!   decoded and bounds checked (`matter-format.md` section 6).
 //! - [`validate()`]: the top-level validator that dispatches between matter
@@ -30,6 +39,9 @@ use core::ffi::c_char;
 
 pub mod container;
 pub mod error;
+pub mod frames;
+pub mod gravity;
+pub mod integrate;
 pub mod key;
 pub mod matter;
 pub mod registry;

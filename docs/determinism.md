@@ -35,3 +35,11 @@ Decoding is not affected: any conforming zstd decoder reads any conforming frame
 - `scripts/ci.sh` runs it into `target/conformance-check` and fails on any `diff -r` difference against `conformance/matter` or `conformance/registry`.
 
 To refresh the vectors after an intended change: `rm -rf conformance/matter conformance/registry && cargo run -p conformance-gen -- conformance`.
+
+## How the laws keep the promise
+
+The laws (`frames`, `gravity`, `integrate`) produce no hub bytes, but they are held to the same rule so that a renderer and a conformance check agree bit for bit on where every frame is at a given time.
+
+- Frames are always visited by ascending `frame_id`, and gravity sources are summed in that order. No hash map is iterated.
+- Only `+`, `-`, `*`, `/`, and `sqrt` are used, all correctly rounded in IEEE 754. No platform `sin`, `cos`, or `cbrt`: the Yoshida coefficients come from a written-out cube root of 2, and orientations advance by `normalize(q + 0.5 * dt * q * (0, w))` with no trigonometry.
+- `advance` splits an interval into `ceil(|interval| / max_step)` equal steps and sets the time to exactly the target at the end.
