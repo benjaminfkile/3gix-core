@@ -1,6 +1,7 @@
 //! Determinism proof: running the generator into a scratch directory
-//! produces exactly the files checked in under `conformance/matter/` and
-//! `conformance/registry/`, byte for byte, with no file missing or extra.
+//! produces exactly the files checked in under `conformance/matter/`,
+//! `conformance/registry/`, and `conformance/container/`, byte for byte, with
+//! no file missing or extra.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -35,7 +36,7 @@ fn generator_reproduces_checked_in_vectors() {
         .expect("run conformance-gen");
     assert!(status.success(), "conformance-gen failed: {status}");
 
-    for dir in ["matter", "registry"] {
+    for dir in ["matter", "registry", "container"] {
         let fresh = scratch.join(dir);
         let checked_in = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../conformance")

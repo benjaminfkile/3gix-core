@@ -1,0 +1,18 @@
+{
+  "key": "registry",
+  "section_count": 2,
+  "sections": [
+    {
+      "frame_count": 5,
+      "source": "registry/union/valid-a.bin"
+    },
+    {
+      "frame_count": 2,
+      "source": "registry/union/valid-b.bin"
+    }
+  ],
+  "union": {
+    "frame_count": 7,
+    "root": 1
+  }
+}

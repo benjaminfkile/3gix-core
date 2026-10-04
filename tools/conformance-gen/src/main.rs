@@ -1,11 +1,13 @@
-//! Regenerates the matter section and frame registry conformance vectors.
+//! Regenerates the matter section, frame registry, and hub container
+//! conformance vectors.
 //!
 //! Usage: `conformance-gen OUT_DIR`. Writes `OUT_DIR/matter/valid/`,
-//! `OUT_DIR/matter/invalid/`, and `OUT_DIR/registry/` (see the [`registry`]
-//! module), the files checked in under `conformance/matter/` and
-//! `conformance/registry/` (`matter-format.md` section 8). Run it with
-//! `conformance` as `OUT_DIR` after removing `conformance/matter` and
-//! `conformance/registry` to refresh the checked-in vectors, or into a
+//! `OUT_DIR/matter/invalid/`, `OUT_DIR/registry/` (see the [`registry`]
+//! module), and `OUT_DIR/container/` (see the [`container`] module), the
+//! files checked in under `conformance/matter/`, `conformance/registry/`,
+//! and `conformance/container/` (`matter-format.md` section 8). Run it with
+//! `conformance` as `OUT_DIR` after removing those three directories to
+//! refresh the checked-in vectors, or into a
 //! scratch directory and `diff -r` to prove the checked-in files are what the
 //! code produces.
 //!
@@ -31,6 +33,7 @@ use gx_core::matter::{self, Compression, Sample, Samples, Section, State, HEADER
 use gx_core::units::{Attenuation, Density, Kelvin, Meters, Ratio};
 use serde_json::{json, Value};
 
+mod container;
 mod registry;
 
 /// SplitMix64: a small, fixed, portable pseudo-random sequence.
@@ -326,6 +329,41 @@ fn res64_shells() -> Section {
     build(cell(5, 4, 8, 8, 8), 1.0e5, 64, samples)
 }
 
+/// Eight samples in the same cell as [`res16_ball`], with the same
+/// geometry, so the two composite: a thin gas and plasma haze around a
+/// solid core.
+fn res2_shared_cell() -> Section {
+    let haze = |density: f64, state: State, temperature: f64, attenuation: f64| {
+        sample(
+            density,
+            state,
+            temperature,
+            ratio3(0.6, 0.65, 0.7),
+            1.0,
+            attenuation,
+        )
+    };
+    let list = [
+        haze(0.05, State::Gas, 220.0, 0.02),
+        haze(0.02, State::Gas, 230.0, 0.01),
+        haze(1.0e-4, State::Plasma, 6000.0, 0.3),
+        Sample::VACUUM,
+        sample(
+            3200.0,
+            State::Solid,
+            400.0,
+            ratio3(0.25, 0.2, 0.15),
+            0.8,
+            0.0,
+        ),
+        haze(0.08, State::Gas, 210.0, 0.03),
+        Sample::VACUUM,
+        haze(2.0e-4, State::Plasma, 7000.0, 0.4),
+    ];
+    let key = res16_ball().key();
+    build(key, 6.4e6, 2, Samples::from_samples(list))
+}
+
 fn empty() -> Section {
     let key = cell(6, 10, 1000, 0, 1023);
     let g = key.geometry(Meters::new(1.0e4));
@@ -337,6 +375,7 @@ fn valid() -> Vec<File> {
     let sections = [
         ("res1-hot-plasma", res1_hot_plasma(), Compression::None),
         ("res2-every-state", res2_every_state(), Compression::None),
+        ("res2-shared-cell", res2_shared_cell(), Compression::None),
         ("res3-mixed", res3_mixed(), Compression::None),
         ("res16-raw", ball.clone(), Compression::None),
         ("res16-zstd", ball, Compression::Zstd),
@@ -733,6 +772,7 @@ fn generate() -> Vec<File> {
     let mut files = valid();
     files.extend(invalid());
     files.extend(registry::files());
+    files.extend(container::files());
     files.sort_by(|a, b| a.0.cmp(&b.0));
     files
 }

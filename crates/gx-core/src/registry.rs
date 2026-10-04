@@ -3,7 +3,7 @@
 //!
 //! Implements `matter-format.md` section 5: the 24-byte header (5.1), the
 //! 144-byte frame records sorted by `frame_id` (5.2), the empty registry
-//! (5.3), and the rules across the union of all layers' registries that the
+//! (5.3), and the rules across the union of all of a build's registries that the
 //! renderer applies (5.2).
 //!
 //! A [`Registry`] is one compiler's list of reference frames with their mass
@@ -11,7 +11,7 @@
 //! one registry can be checked against: [`Registry::new`] runs the same
 //! rules as [`decode`], and the fields are reachable only through accessors.
 //!
-//! A [`FrameTree`] is the union of every layer's registry. Building one with
+//! A [`FrameTree`] is the union of every registry in a build. Building one with
 //! [`FrameTree::from_registries`] checks the cross-registry rules: one epoch,
 //! ids unique across the union, exactly one root, every parent present, and
 //! no cycles.

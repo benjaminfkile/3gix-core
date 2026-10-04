@@ -15,7 +15,7 @@ The codes are defined in `crates/gx-core/src/error.rs` (module `codes`). This ta
 | 500 to 599 | Channel values, including the vacuum rules | in use |
 | 600 to 649 | Frame registry, one registry (`matter-format.md` sections 5.1 to 5.3) | in use |
 | 650 to 699 | Frame registry, union of a build's registries (`matter-format.md` section 5.2) | in use |
-| 700 to 799 | Hub container (`matter-format.md` section 6) | reserved |
+| 700 to 799 | Hub container (`matter-format.md` section 6) | in use |
 | 800 to 899 | Compositing (`matter-format.md` section 3.5), not byte rules | in use |
 
 ## Check order
@@ -36,6 +36,21 @@ A value of negative zero compares equal to zero, so it passes "greater than or e
 
 `Registry::new` runs the same rules on frames it has sorted by id: epoch (606), the frame count (608), then for each frame in id order a repeated id (613) and the field rules 614 to 625.
 
+### Hub container
+
+`container::decode_chunk` and `container::decode_registry_chunk` read the whole table before any section, in this order, and stop at the first failing rule:
+
+1. At least 4 bytes (701), then `section_count` not negative (702).
+2. Entry by entry in table order, field by field: id length (703 if cut off, 704 if negative), id bytes (703 if cut off, 705 if not UTF-8), `codec_len` (703 if cut off, 706 if negative, 707 if above 0), `data_offset` (703, 708), `data_len` (703, 709).
+3. Then entry by entry against the data region that follows the table: an entry starting before the previous entry's end (710) or after it (711; the first entry must start at 0), an entry ending past the data region (712). After the last entry, any bytes left in the data region (713).
+4. Then each section in table order, with `matter::decode` against the key, or `registry::decode`. A failing section keeps its own code (101 to 526, or 601 to 625), and its reason starts with `section INDEX:`.
+
+A container with `section_count` 0 and no data is valid and holds no sections. Layer ids are read only to move past them. They are never returned and never appear in a reason.
+
+### Top-level validator
+
+`validate(key, bytes)` and `gx_validate` parse the key first (206). The key `registry` selects the registry rules; any cell key selects the matter rules. Through the C ABI, null pointer checks come first: `key` (207), then the key's UTF-8 (206), then `bytes` (106).
+
 `FrameTree::from_registries` checks the union in this order: epochs (651), ids unique across registries (652), the number of roots (653, 654), every parent present (655), no cycle (656).
 
 Negative zero counts as zero for the root position and velocity rules. Epochs are compared by bit pattern, so `0.0` and `-0.0` differ.
@@ -51,6 +66,7 @@ Negative zero counts as zero for the root position and velocity rules. Epochs ar
 | 103 | `format_version` is not 1. |
 | 104 | A `flags` bit other than bit 0 (EMPTY) and bit 1 (ZSTD) is set. |
 | 105 | The reserved `u16` at offset 18 is not 0. |
+| 106 | The C ABI was given a null `bytes` pointer with a non-zero `bytes_len`. No byte vector. |
 
 ### 200 to 299: key (section 4 step 4, section 2)
 
@@ -62,6 +78,9 @@ Negative zero counts as zero for the root position and velocity rules. Epochs ar
 | 203 | Header `cell_x` differs from the key. |
 | 204 | Header `cell_y` differs from the key. |
 | 205 | Header `cell_z` differs from the key. |
+| 206 | The key string given to the top-level validator does not parse as a chunk key (section 2), or through the C ABI its bytes are not UTF-8. |
+| 207 | The C ABI was given a null `key` pointer with a non-zero `key_len`. No byte vector. |
+| 208 | A cell key was required and `registry` was given. Reachable only through `container::chunk_mass` and the WebAssembly `decode_chunk_mass`. No byte vector. |
 
 ### 300 to 399: geometry (section 4 step 5, section 3.2)
 
@@ -152,9 +171,25 @@ Returned by `FrameTree::from_registries`. These rules span several registries, s
 | 655 | A frame's `parent_frame_id` is not a frame in the union. |
 | 656 | Following parents from some frame never reaches the root: a cycle, including a frame that is its own parent. |
 
-### 700 to 799: hub container
+### 700 to 799: hub container (section 6)
 
-Reserved for section 6. Not yet assigned.
+Returned by `container::decode_chunk` and `container::decode_registry_chunk`. Every integer in the container is a little-endian `i32`.
+
+| Code | Rule |
+|---|---|
+| 701 | The input is shorter than the 4-byte `section_count`. |
+| 702 | `section_count` is negative. |
+| 703 | The table ends inside an entry: a field, or the id or codec bytes it announces, runs past the end of the input. |
+| 704 | An entry's id length is negative. |
+| 705 | An entry's id bytes are not UTF-8. |
+| 706 | An entry's `codec_len` is negative. |
+| 707 | An entry's `codec_len` is above 0. No codec is defined, so the bytes cannot be read. |
+| 708 | An entry's `data_offset` is negative. |
+| 709 | An entry's `data_len` is negative. |
+| 710 | An entry starts before the end of the previous entry: entries overlap or are out of order. |
+| 711 | An entry starts after the end of the previous entry (or the first entry after 0), leaving bytes no entry owns. |
+| 712 | An entry ends past the end of the data region. |
+| 713 | Bytes follow the end of the last entry in the data region. |
 
 ### 800 to 899: compositing (section 3.5)
 
@@ -169,8 +204,28 @@ Returned by `composite`. These are not byte rules and have no vectors.
 
 A composite whose summed density overflows `f32` fails with 501, because the result is checked like any other section.
 
+## Short names
+
+Each code has a short name, the identifier of its constant in `error::codes`, such as `BAD_MAGIC` for 102. `error::code_name` returns it in Rust and `gx_error_name` through the C ABI.
+
+## C ABI contract
+
+Declared in `include/gx_core.h` (`matter-format.md` section 7):
+
+- `uint32_t gx_format_version(void)` returns the format version, 1.
+- `int32_t gx_validate(key, key_len, bytes, bytes_len, err_buf, err_cap)` returns 0 on success and the code from this table on failure. `key` is UTF-8 and need not be NUL terminated.
+- On failure the reason is written to `err_buf` as NUL-terminated UTF-8, truncated to at most `err_cap - 1` bytes plus the NUL. Truncation never splits a UTF-8 sequence, so the written prefix may be shorter than `err_cap - 1` bytes. A reason that fits is written whole. With `err_cap` 1 only the NUL is written.
+- With a null `err_buf` or a zero `err_cap`, nothing is written and the code is still returned. On success `err_buf` is never touched.
+- A null pointer with length 0 is an empty input. A null `key` with a non-zero `key_len` returns 207 and a null `bytes` with a non-zero `bytes_len` returns 106: never undefined behavior.
+- `const char* gx_error_name(int32_t code)` returns a static NUL-terminated short name, or the empty string for an unknown code (including 0). It never returns NULL and the string must not be freed.
+- Every function is stateless and thread safe.
+
+`tools/abi-check/abi_check.c` exercises this contract from C against the built shared library; `scripts/ci.sh` builds and runs it.
+
 ## Conformance vectors
 
-`conformance/matter/invalid/` holds at least one file for every code above that bytes can trigger (every code from 101 to 526 except 200 and 417). Files are named `CODE-RULE.bin`. `index.json` gives the key every file is validated under and maps each file name to its expected code.
+`conformance/matter/invalid/` holds at least one file for every code above that bytes can trigger (every code from 101 to 526 except 106, 200, 206, 207, 208, and 417, which bytes alone cannot trigger). Files are named `CODE-RULE.bin`. `index.json` gives the key every file is validated under and maps each file name to its expected code.
 
 `conformance/registry/invalid/` holds at least one file for every code from 601 to 625 except 608, named `CODE-RULE.bin`, with `index.json` mapping each file name to its expected code. `conformance/registry/union/` holds registries that are each valid alone, and its `index.json` lists cases: which files form the union, in order, and either the expected tree (root, frame count, every path to the root) or the expected code. There is at least one case for every code from 651 to 656.
+
+`conformance/container/invalid/` holds one file for every code from 701 to 713, named `CODE-RULE.bin`, plus a container whose table is sound but whose first section fails with 102. `index.json` gives the key every file is decoded under and maps each file name to its code. `conformance/container/valid/` holds a matter chunk and a registry chunk with the expected decode results.

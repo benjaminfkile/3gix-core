@@ -1,3 +1,5 @@
 [workspace]
 resolver = "2"
 members = ["crates/*", "tools/*"]
+# A C program, not a Rust crate: built by scripts/ci.sh with the system cc.
+exclude = ["tools/abi-check"]
