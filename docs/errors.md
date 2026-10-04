@@ -13,7 +13,8 @@ The codes are defined in `crates/gx-core/src/error.rs` (module `codes`). This ta
 | 300 to 399 | Geometry: cell edge and origin | in use |
 | 400 to 499 | Sample block: resolution, lengths, empty section rules, zstd framing | in use |
 | 500 to 599 | Channel values, including the vacuum rules | in use |
-| 600 to 699 | Frame registry (`matter-format.md` section 5) | reserved |
+| 600 to 649 | Frame registry, one registry (`matter-format.md` sections 5.1 to 5.3) | in use |
+| 650 to 699 | Frame registry, union of a build's registries (`matter-format.md` section 5.2) | in use |
 | 700 to 799 | Hub container (`matter-format.md` section 6) | reserved |
 | 800 to 899 | Compositing (`matter-format.md` section 3.5), not byte rules | in use |
 
@@ -25,6 +26,19 @@ The codes are defined in `crates/gx-core/src/error.rs` (module `codes`). This ta
 2. Then the vacuum rules, sample by sample in index order. For each sample: a non-zero density with the vacuum state (522), or a zero density with a non-vacuum state (521), then the zero rules for temperature, albedo bands 0 to 2, roughness, and attenuation (523 to 526).
 
 A value of negative zero compares equal to zero, so it passes "greater than or equal to 0" and counts as density 0.
+
+### Frame registry
+
+`registry::decode` and `registry::validate` check one registry in this order and stop at the first failing rule:
+
+1. Length at least 24 (601), magic (602), version (603), reserved `u16` at offset 6 (604), reserved `u32` at offset 20 (605), finite epoch (606), length exactly `24 + 144 * frame_count` (607).
+2. Then record by record in file order. For each record: its `frame_id` against the previous record's (612 if lower, 613 if equal), the reserved bytes (611), then the field rules in table order, 614 to 625.
+
+`Registry::new` runs the same rules on frames it has sorted by id: epoch (606), the frame count (608), then for each frame in id order a repeated id (613) and the field rules 614 to 625.
+
+`FrameTree::from_registries` checks the union in this order: epochs (651), ids unique across registries (652), the number of roots (653, 654), every parent present (655), no cycle (656).
+
+Negative zero counts as zero for the root position and velocity rules. Epochs are compared by bit pattern, so `0.0` and `-0.0` differ.
 
 ## Codes
 
@@ -95,9 +109,48 @@ A value of negative zero compares equal to zero, so it passes "greater than or e
 | 525 | A vacuum sample has a roughness other than 0. |
 | 526 | A vacuum sample has an attenuation other than 0. |
 
-### 600 to 699: frame registry
+### 600 to 649: one frame registry (sections 5.1, 5.2, and 5.3)
 
-Reserved for section 5. Not yet assigned.
+Returned by `registry::decode`, `registry::validate`, and `Registry::new`.
+
+| Code | Rule |
+|---|---|
+| 601 | The input is shorter than the 24-byte registry header. |
+| 602 | The magic is not `0x33 0x47 0x52 0x47`. |
+| 603 | `format_version` is not 1. |
+| 604 | The reserved `u16` at offset 6 is not 0. |
+| 605 | The reserved `u32` at offset 20 is not 0. |
+| 606 | `epoch` is NaN or infinite. |
+| 607 | The input length is not exactly `24 + 144 * frame_count`. |
+| 608 | More frames than a `u32` counts were given to `Registry::new`. Reachable only through the Rust API. No byte vector. |
+| 611 | A record's 7 reserved bytes at offset 25 are not all 0. |
+| 612 | A record's `frame_id` is lower than the previous record's. Records must already be ascending; the decoder never sorts. |
+| 613 | Two records in one registry have the same `frame_id`. |
+| 614 | `root_extent` is NaN or infinite. |
+| 615 | `root_extent` is zero or negative. |
+| 616 | `max_depth` is above 31. |
+| 617 | `mass` is NaN or infinite. |
+| 618 | `mass` is negative. |
+| 619 | A component of `position` is NaN or infinite. |
+| 620 | A component of `velocity` is NaN or infinite. |
+| 621 | A component of `orientation` is NaN or infinite. |
+| 622 | `orientation` is not a unit quaternion: its norm differs from 1 by more than `1e-9`. |
+| 623 | A component of `angular_velocity` is NaN or infinite. |
+| 624 | A root frame (`parent_frame_id` is `0xFFFFFFFFFFFFFFFF`) has a `position` other than 0. |
+| 625 | A root frame has a `velocity` other than 0. |
+
+### 650 to 699: union of a build's registries (section 5.2)
+
+Returned by `FrameTree::from_registries`. These rules span several registries, so the per-section validator never reports them; the renderer does.
+
+| Code | Rule |
+|---|---|
+| 651 | Two registries have different `epoch` values (compared by bit pattern). Empty registries take part. |
+| 652 | A `frame_id` is declared by more than one registry. |
+| 653 | The union has no root frame. This includes a union with no frames at all. |
+| 654 | The union has more than one root frame. |
+| 655 | A frame's `parent_frame_id` is not a frame in the union. |
+| 656 | Following parents from some frame never reaches the root: a cycle, including a frame that is its own parent. |
 
 ### 700 to 799: hub container
 
@@ -119,3 +172,5 @@ A composite whose summed density overflows `f32` fails with 501, because the res
 ## Conformance vectors
 
 `conformance/matter/invalid/` holds at least one file for every code above that bytes can trigger (every code from 101 to 526 except 200 and 417). Files are named `CODE-RULE.bin`. `index.json` gives the key every file is validated under and maps each file name to its expected code.
+
+`conformance/registry/invalid/` holds at least one file for every code from 601 to 625 except 608, named `CODE-RULE.bin`, with `index.json` mapping each file name to its expected code. `conformance/registry/union/` holds registries that are each valid alone, and its `index.json` lists cases: which files form the union, in order, and either the expected tree (root, frame count, every path to the root) or the expected code. There is at least one case for every code from 651 to 656.

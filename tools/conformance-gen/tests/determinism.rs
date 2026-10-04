@@ -1,6 +1,6 @@
 //! Determinism proof: running the generator into a scratch directory
-//! produces exactly the files checked in under `conformance/matter/`, byte
-//! for byte, with no file missing or extra.
+//! produces exactly the files checked in under `conformance/matter/` and
+//! `conformance/registry/`, byte for byte, with no file missing or extra.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -35,15 +35,23 @@ fn generator_reproduces_checked_in_vectors() {
         .expect("run conformance-gen");
     assert!(status.success(), "conformance-gen failed: {status}");
 
-    let fresh = scratch.join("matter");
-    let checked_in = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/matter");
-    let a = files(&fresh);
-    let b = files(&checked_in);
-    assert_eq!(a, b, "generated and checked-in file lists differ");
-    assert!(!a.is_empty());
-    for rel in &a {
-        let x = std::fs::read(fresh.join(rel)).unwrap();
-        let y = std::fs::read(checked_in.join(rel)).unwrap();
-        assert!(x == y, "{} differs from the checked-in file", rel.display());
+    for dir in ["matter", "registry"] {
+        let fresh = scratch.join(dir);
+        let checked_in = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../conformance")
+            .join(dir);
+        let a = files(&fresh);
+        let b = files(&checked_in);
+        assert_eq!(a, b, "{dir}: generated and checked-in file lists differ");
+        assert!(!a.is_empty(), "{dir}: no files");
+        for rel in &a {
+            let x = std::fs::read(fresh.join(rel)).unwrap();
+            let y = std::fs::read(checked_in.join(rel)).unwrap();
+            assert!(
+                x == y,
+                "{dir}/{} differs from the checked-in file",
+                rel.display()
+            );
+        }
     }
 }

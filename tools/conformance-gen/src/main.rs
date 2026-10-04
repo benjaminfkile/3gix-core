@@ -1,11 +1,13 @@
-//! Regenerates the matter section conformance vectors.
+//! Regenerates the matter section and frame registry conformance vectors.
 //!
-//! Usage: `conformance-gen OUT_DIR`. Writes `OUT_DIR/matter/valid/` and
-//! `OUT_DIR/matter/invalid/`, the files checked in under
-//! `conformance/matter/` (`matter-format.md` section 8). Run it with
-//! `conformance` as `OUT_DIR` after removing `conformance/matter` to refresh
-//! the checked-in vectors, or into a scratch directory and `diff -r` to prove
-//! the checked-in files are what the code produces.
+//! Usage: `conformance-gen OUT_DIR`. Writes `OUT_DIR/matter/valid/`,
+//! `OUT_DIR/matter/invalid/`, and `OUT_DIR/registry/` (see the [`registry`]
+//! module), the files checked in under `conformance/matter/` and
+//! `conformance/registry/` (`matter-format.md` section 8). Run it with
+//! `conformance` as `OUT_DIR` after removing `conformance/matter` and
+//! `conformance/registry` to refresh the checked-in vectors, or into a
+//! scratch directory and `diff -r` to prove the checked-in files are what the
+//! code produces.
 //!
 //! Output is a pure function of this source and the `gx-core` version: fixed
 //! values, a fixed-seed generator written here, no clock, no environment, no
@@ -28,6 +30,8 @@ use gx_core::key::CellKey;
 use gx_core::matter::{self, Compression, Sample, Samples, Section, State, HEADER_LEN};
 use gx_core::units::{Attenuation, Density, Kelvin, Meters, Ratio};
 use serde_json::{json, Value};
+
+mod registry;
 
 /// SplitMix64: a small, fixed, portable pseudo-random sequence.
 struct SplitMix64(u64);
@@ -53,7 +57,7 @@ impl SplitMix64 {
 }
 
 /// One output file: path relative to `OUT_DIR` and its bytes.
-type File = (String, Vec<u8>);
+pub(crate) type File = (String, Vec<u8>);
 
 fn cell(frame_id: u64, depth: u8, x: u32, y: u32, z: u32) -> CellKey {
     CellKey::new(frame_id, depth, x, y, z).expect("fixed keys are valid")
@@ -90,7 +94,7 @@ fn build(key: CellKey, root_extent: f64, resolution: u8, samples: Samples) -> Se
 }
 
 /// Formats an `f64` as `{"decimal": shortest round-trip text, "bits": hex}`.
-fn number(v: f64) -> Value {
+pub(crate) fn number(v: f64) -> Value {
     json!({
         "decimal": format!("{v:e}"),
         "bits": format!("0x{:016x}", v.to_bits()),
@@ -144,7 +148,7 @@ fn summary(section: &Section, bytes: &[u8]) -> Value {
     })
 }
 
-fn pretty(v: &Value) -> Vec<u8> {
+pub(crate) fn pretty(v: &Value) -> Vec<u8> {
     let mut s = serde_json::to_string_pretty(v).expect("JSON values serialize");
     s.push('\n');
     s.into_bytes()
@@ -728,6 +732,7 @@ fn zstd_frame(block: &[u8]) -> Vec<u8> {
 fn generate() -> Vec<File> {
     let mut files = valid();
     files.extend(invalid());
+    files.extend(registry::files());
     files.sort_by(|a, b| a.0.cmp(&b.0));
     files
 }

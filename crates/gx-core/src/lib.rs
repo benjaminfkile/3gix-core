@@ -10,14 +10,19 @@
 //! - [`matter`]: matter section encode, decode, validate, and composite
 //!   (`matter-format.md` section 3, matter section, with 3.5 compositing, and
 //!   section 4, validation, for matter sections).
+//! - [`registry`]: frame registry encode, decode, and validate, and the
+//!   union of a build's registries as a [`registry::FrameTree`]
+//!   (`matter-format.md` section 5, frame registry: header 5.1, frame
+//!   records and union rules 5.2, empty registry 5.3).
 //! - [`error`]: [`error::ValidationError`] and the stable numeric code table
-//!   for every section 4 rule (`docs/errors.md`).
+//!   for every section 4 and section 5 rule (`docs/errors.md`).
 //!
 //! The C ABI validator is still a placeholder.
 
 pub mod error;
 pub mod key;
 pub mod matter;
+pub mod registry;
 pub mod units;
 
 /// Version of the matter format this library reads and writes.

@@ -30,7 +30,7 @@ The architecture and the byte-level format are specified in the hub repository u
 
 Rust stable. Targets: the host triple for native builds and `wasm32-unknown-unknown` for the browser. `wasm-pack` drives WebAssembly builds. `cargo fmt --check`, `cargo clippy -- -D warnings`, and `cargo test` must pass on every change.
 
-`sh scripts/ci.sh` runs the full check locally: toolchain versions, format, clippy, tests, regeneration of the conformance vectors with a byte-for-byte diff against `conformance/matter`, the WebAssembly build and `wasm-opt`, the headless GPU compute probe, the vocabulary lint, and the native shared library build. See `docs/toolchain.md` for the last recorded run.
+`sh scripts/ci.sh` runs the full check locally: toolchain versions, format, clippy, tests, regeneration of the conformance vectors with a byte-for-byte diff against `conformance/matter` and `conformance/registry`, the WebAssembly build and `wasm-opt`, the headless GPU compute probe, the vocabulary lint, and the native shared library build. See `docs/toolchain.md` for the last recorded run.
 
 ## Layout
 
@@ -41,6 +41,8 @@ crates/gx-core/      the core library: rlib, C ABI cdylib, and WebAssembly expor
   src/units.rs       branded SI quantities, Vec3, Quat
   src/key.rs         chunk keys and cell geometry
   src/matter.rs      matter sections: encode, decode, validate, composite
+  src/registry.rs    frame registry: encode, decode, validate, and the union
+                     of a build's registries as a frame tree
   src/error.rs       ValidationError and the stable numeric error codes
   tests/             integration tests, including the conformance vector checks
 conformance/         conformance vectors any implementation must pass
@@ -48,9 +50,15 @@ conformance/         conformance vectors any implementation must pass
   matter/valid/      valid sections (.bin) with expected decode results (.json)
   matter/invalid/    one or more files per validation code, index.json maps
                      file name to expected code
+  registry/valid/    valid registries (.bin) with every decoded field (.json)
+  registry/invalid/  one or more files per registry code, index.json maps
+                     file name to expected code
+  registry/union/    registries and index.json listing union cases: which
+                     files merge and the expected tree or code
 include/gx_core.h    hand-written C header for the C ABI
 tools/gpu-probe/     headless GPU compute probe (wgpu over Vulkan)
-tools/conformance-gen/  regenerates conformance/matter/ deterministically
+tools/conformance-gen/  regenerates conformance/matter/ and
+                     conformance/registry/ deterministically
 scripts/             ci.sh, the vocabulary lint, and its word list
 docs/                toolchain record, error codes (errors.md), determinism
                      rules (determinism.md); format specification once it
