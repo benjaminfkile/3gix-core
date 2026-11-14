@@ -12,7 +12,15 @@ crate-type = ["rlib", "cdylib"]
 zstd = "=0.14.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = "0.2"
+wasm-bindgen = { version = "0.2", optional = true }
+
+[features]
+default = ["exports"]
+# The C ABI symbols (`gx_validate` and the rest, unmangled) and, on wasm32,
+# the `wasm-bindgen` exports. Compiler modules link the library with
+# `default-features = false`: a module must have no imports and should not
+# re-export the library's own entry points.
+exports = ["dep:wasm-bindgen"]
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false

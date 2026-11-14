@@ -3,7 +3,8 @@
 # regeneration, WebAssembly build and export check, the WebAssembly build run
 # under Node against the native conformance vectors, headless GPU compute
 # probe, vocabulary lint, native shared library build, and the C ABI check
-# program.
+# program, and the module determinism harness: the example module built for
+# wasm32 and run natively through gx-module-host and under Node.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -41,6 +42,7 @@ diff -r target/conformance-check/timescale conformance/timescale
 diff -r target/conformance-check/integrate conformance/integrate
 diff -r target/conformance-check/observer conformance/observer
 diff -r target/conformance-check/light conformance/light
+diff -r target/conformance-check/module conformance/module
 
 step "5. cargo build wasm32"
 cargo build -p gx-core --release --target wasm32-unknown-unknown
@@ -86,5 +88,24 @@ LD_LIBRARY_PATH=target/release target/abi-check/abi_check \
     conformance/registry/invalid/610-version-1-registry.bin \
     conformance/manifest/valid/three.bin \
     conformance/manifest/invalid/906-not-sorted.bin
+
+step "12. example module for wasm32"
+cargo build -p gx-module-test --release --target wasm32-unknown-unknown
+module=target/wasm32-unknown-unknown/release/gx_module_test.wasm
+ls -l "$module"
+
+step "13. module determinism harness, native and Node"
+sh scripts/module-determinism.sh "$module" conformance/module
+
+step "13b. the harness fails on a wrong expected hash"
+rm -rf target/module-vectors-broken
+cp -r conformance/module target/module-vectors-broken
+echo 0000000000000000000000000000000000000000000000000000000000000000 \
+    > target/module-vectors-broken/05-span.sha256
+if sh scripts/module-determinism.sh "$module" target/module-vectors-broken > /dev/null 2>&1; then
+    echo "module-determinism accepted a wrong hash" >&2
+    exit 1
+fi
+echo "harness rejects a wrong hash"
 
 printf '\nci ok\n'

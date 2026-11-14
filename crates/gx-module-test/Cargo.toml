@@ -1,0 +1,17 @@
+[package]
+name = "gx-module-test"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "A tiny example module for tests and conformance of the module ABI."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+gx-core = { path = "../gx-core", default-features = false }
+gx-module-guest = { path = "../gx-module-guest" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+gx-module-host = { path = "../gx-module-host" }
+wasmparser = "=0.261.0"

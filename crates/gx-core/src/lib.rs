@@ -73,12 +73,20 @@
 //!   `integrate_registry`, `observer_simulate`, and
 //!   `light_retarded_state`, built with
 //!   `wasm-bindgen`.
+//! - [`detmath`]: deterministic `exp`, `expm1`, `sin`, `cos`, and `tan`,
+//!   public so compiler modules compute bitwise identical values on every
+//!   platform (`space-model.md` section 1 rule 7).
+//!
+//! The C ABI symbols and the WebAssembly exports exist only with the
+//! default `exports` feature. Without it the functions remain callable from
+//! Rust but no unmangled symbol is emitted, which is how compiler modules
+//! link the library (`client-compute.md` section 4: a module has no imports).
 
 use core::ffi::c_char;
 
 pub mod address;
 pub mod container;
-mod detmath;
+pub mod detmath;
 pub mod emission;
 pub mod error;
 pub mod extinction;
@@ -110,7 +118,7 @@ use error::{codes, ValidationError};
 pub const FORMAT_VERSION: u32 = 1;
 
 /// Returns the matter format version, [`FORMAT_VERSION`].
-#[no_mangle]
+#[cfg_attr(feature = "exports", no_mangle)]
 pub extern "C" fn gx_format_version() -> u32 {
     FORMAT_VERSION
 }
@@ -173,7 +181,7 @@ fn validate_ffi(key: Option<&[u8]>, bytes: Option<&[u8]>) -> Result<(), Validati
 /// non-null `bytes` for `bytes_len` readable bytes. If `err_buf` is non-null
 /// and `err_cap` is non-zero, `err_buf` must point to at least `err_cap`
 /// writable bytes that do not overlap the inputs.
-#[no_mangle]
+#[cfg_attr(feature = "exports", no_mangle)]
 pub unsafe extern "C" fn gx_validate(
     key: *const u8,
     key_len: usize,
@@ -252,7 +260,7 @@ fn section_address_ffi(
 /// A non-null `module32` and `manifest32_or_null` must each be valid for 32
 /// readable bytes, a non-null `key` for `key_len` readable bytes, and a
 /// non-null `out32` for 32 writable bytes.
-#[no_mangle]
+#[cfg_attr(feature = "exports", no_mangle)]
 pub unsafe extern "C" fn gx_section_address(
     module32: *const u8,
     manifest32_or_null: *const u8,
@@ -305,7 +313,7 @@ pub unsafe extern "C" fn gx_section_address(
 /// A non-null `bytes` must be valid for `len` readable bytes. If `err_buf` is
 /// non-null and `err_cap` is non-zero, `err_buf` must point to at least
 /// `err_cap` writable bytes that do not overlap the input.
-#[no_mangle]
+#[cfg_attr(feature = "exports", no_mangle)]
 pub unsafe extern "C" fn gx_manifest_validate(
     bytes: *const u8,
     len: usize,
@@ -335,7 +343,7 @@ pub unsafe extern "C" fn gx_manifest_validate(
 /// Returns the short name of an error code, such as `BAD_MAGIC` for 102, as
 /// a pointer to a static NUL-terminated ASCII string. Unknown codes,
 /// including 0, give the empty string. Never returns null.
-#[no_mangle]
+#[cfg_attr(feature = "exports", no_mangle)]
 pub extern "C" fn gx_error_name(code: i32) -> *const c_char {
     error::code_name_c(i64::from(code))
         .as_ptr()
@@ -373,7 +381,7 @@ unsafe fn write_reason(buf: *mut u8, cap: usize, reason: &str) {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "exports"))]
 mod wasm {
     use wasm_bindgen::prelude::*;
 
@@ -621,7 +629,7 @@ mod wasm {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "exports"))]
 pub use wasm::{
     decode_chunk_mass, format_version, integrate_registry, light_retarded_state, manifest_validate,
     observer_simulate, section_address,
