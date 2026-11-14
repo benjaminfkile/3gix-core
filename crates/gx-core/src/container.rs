@@ -276,7 +276,7 @@ pub fn chunk_mass(key: &str, bytes: &[u8]) -> Result<Kilograms, ValidationError>
 mod tests {
     use super::*;
     use crate::matter::{encode, Compression, Sample, Samples};
-    use crate::units::{Meters, Seconds};
+    use crate::units::Meters;
 
     const LAYER_A: &str = "layer-a";
     const LAYER_B: &str = "layer-b-\u{e9}";
@@ -370,8 +370,8 @@ mod tests {
 
     #[test]
     fn registries() {
-        let r1 = Registry::empty(Seconds::new(5.0)).unwrap();
-        let r2 = Registry::empty(Seconds::new(5.0)).unwrap();
+        let r1 = Registry::empty();
+        let r2 = Registry::empty();
         let (e1, e2) = (registry::encode(&r1), registry::encode(&r2));
         let c = encode_chunk(&[&e1, &e2], &[LAYER_A, LAYER_B]);
         assert_eq!(decode_registry_chunk(&c).unwrap(), vec![r1, r2]);

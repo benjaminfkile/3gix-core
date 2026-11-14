@@ -23,6 +23,9 @@ fn frame(id: u64, parent: u64, mass: f64, position: Vec3, velocity: Vec3) -> Fra
         velocity,
         orientation: Quat::identity(),
         angular_velocity: Vec3::zero(),
+        j2: 0.0,
+        reference_radius: Meters::new(0.0),
+        principal_moments: Vec3::zero(),
     }
 }
 

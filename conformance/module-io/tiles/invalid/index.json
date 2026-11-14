@@ -1,0 +1,12 @@
+{
+  "vectors": {
+    "941-too-short.bin": 941,
+    "942-bytes-cut.bin": 942,
+    "942-count-high.bin": 942,
+    "942-header-cut.bin": 942,
+    "943-count-low.bin": 943,
+    "943-trailing-byte.bin": 943,
+    "944-ids-descend.bin": 944,
+    "944-ids-repeat.bin": 944
+  }
+}

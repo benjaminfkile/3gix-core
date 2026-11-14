@@ -33,7 +33,7 @@ mod tests {
     use crate::key::CellKey;
     use crate::matter::{Compression, Section};
     use crate::registry::Registry;
-    use crate::units::{Meters, Seconds};
+    use crate::units::Meters;
 
     fn matter_bytes() -> Vec<u8> {
         let key = CellKey::new(7, 3, 1, 2, 5).unwrap();
@@ -47,7 +47,7 @@ mod tests {
     #[test]
     fn dispatches_by_key() {
         let m = matter_bytes();
-        let r = registry::encode(&Registry::empty(Seconds::new(0.0)).unwrap());
+        let r = registry::encode(&Registry::empty());
         assert_eq!(validate("7-3-1-2-5", &m), Ok(()));
         assert_eq!(validate("registry", &r), Ok(()));
         assert_eq!(

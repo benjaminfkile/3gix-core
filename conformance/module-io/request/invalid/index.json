@@ -1,0 +1,13 @@
+{
+  "vectors": {
+    "931-too-short.bin": 931,
+    "932-bad-magic.bin": 932,
+    "933-unsupported-version.bin": 933,
+    "934-reserved-nonzero.bin": 934,
+    "935-key-length-high.bin": 935,
+    "935-trailing-byte.bin": 935,
+    "936-key-coordinate-out-of-range.bin": 936,
+    "936-key-empty.bin": 936,
+    "936-key-not-utf8.bin": 936
+  }
+}

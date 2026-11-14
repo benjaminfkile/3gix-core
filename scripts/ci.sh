@@ -1,6 +1,7 @@
 #!/bin/sh
 # Full local CI: toolchain versions, format, lint, tests, conformance vector
-# regeneration, WebAssembly build and export check, headless GPU compute
+# regeneration, WebAssembly build and export check, the WebAssembly build run
+# under Node against the native conformance vectors, headless GPU compute
 # probe, vocabulary lint, native shared library build, and the C ABI check
 # program.
 set -eu
@@ -16,6 +17,7 @@ rustc --version
 cargo --version
 wasm-pack --version
 wasm-opt --version
+node --version
 
 step "2. cargo fmt"
 cargo fmt --all -- --check
@@ -32,6 +34,10 @@ cargo run -p conformance-gen --release -- target/conformance-check
 diff -r target/conformance-check/matter conformance/matter
 diff -r target/conformance-check/registry conformance/registry
 diff -r target/conformance-check/container conformance/container
+diff -r target/conformance-check/address conformance/address
+diff -r target/conformance-check/manifest conformance/manifest
+diff -r target/conformance-check/module-io conformance/module-io
+diff -r target/conformance-check/timescale conformance/timescale
 
 step "5. cargo build wasm32"
 cargo build -p gx-core --release --target wasm32-unknown-unknown
@@ -40,13 +46,17 @@ step "6. wasm-pack build"
 wasm-pack build crates/gx-core --release --target web --out-dir ../../target/wasm-pkg
 
 step "6b. wasm exports in the generated TypeScript declarations"
-for f in format_version validate decode_chunk_mass; do
+for f in format_version validate decode_chunk_mass section_address manifest_validate \
+    utc_ms_to_tdb_seconds tdb_seconds_to_utc_ms; do
     grep -q "export function $f(" target/wasm-pkg/gx_core.d.ts || {
         echo "missing wasm export: $f" >&2
         exit 1
     }
 done
 echo "wasm exports ok"
+
+step "6c. wasm under Node matches the native conformance vectors"
+node scripts/wasm-node-check.mjs
 
 step "7. wasm-opt"
 wasm-opt -O2 target/wasm-pkg/gx_core_bg.wasm -o target/wasm-pkg/gx_core_bg.opt.wasm
@@ -68,6 +78,9 @@ cc -std=c99 -Wall -Wextra -Werror -pedantic -Iinclude \
     -o target/abi-check/abi_check
 LD_LIBRARY_PATH=target/release target/abi-check/abi_check \
     conformance/registry/valid/tree.bin \
-    conformance/matter/valid/res16-zstd.bin 4-5-17-3-30
+    conformance/matter/valid/res16-zstd.bin 4-5-17-3-30 \
+    conformance/registry/invalid/610-version-1-registry.bin \
+    conformance/manifest/valid/three.bin \
+    conformance/manifest/invalid/906-not-sorted.bin
 
 printf '\nci ok\n'

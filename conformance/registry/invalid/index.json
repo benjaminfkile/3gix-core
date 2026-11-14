@@ -3,6 +3,7 @@
     "601-header-too-short.bin": 601,
     "601-header-zero-length.bin": 601,
     "602-bad-magic.bin": 602,
+    "603-unsupported-version-zero.bin": 603,
     "603-unsupported-version.bin": 603,
     "604-reserved-u16-nonzero.bin": 604,
     "605-reserved-u32-nonzero.bin": 605,
@@ -12,6 +13,8 @@
     "607-frame-count-zero.bin": 607,
     "607-length-long.bin": 607,
     "607-length-short.bin": 607,
+    "609-empty-epoch-nonzero.bin": 609,
+    "610-version-1-registry.bin": 610,
     "611-record-reserved-nonzero.bin": 611,
     "612-records-not-sorted.bin": 612,
     "613-duplicate-id.bin": 613,
@@ -30,6 +33,17 @@
     "622-orientation-zero.bin": 622,
     "623-angular-velocity-nan.bin": 623,
     "624-root-position-nonzero.bin": 624,
-    "625-root-velocity-nonzero.bin": 625
+    "625-root-velocity-nonzero.bin": 625,
+    "626-j2-infinite.bin": 626,
+    "626-j2-nan.bin": 626,
+    "627-j2-negative.bin": 627,
+    "628-reference-radius-infinite.bin": 628,
+    "629-reference-radius-negative-with-j2.bin": 629,
+    "629-reference-radius-zero-with-j2.bin": 629,
+    "630-reference-radius-without-j2.bin": 630,
+    "631-moments-nan.bin": 631,
+    "632-moments-negative.bin": 632,
+    "632-moments-one-zero.bin": 632,
+    "633-moments-triangle.bin": 633
   }
 }

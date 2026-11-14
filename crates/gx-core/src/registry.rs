@@ -1,10 +1,13 @@
 //! The frame registry: encode, decode, validate, and the union of a build's
 //! registries.
 //!
-//! Implements `matter-format.md` section 5: the 24-byte header (5.1), the
-//! 144-byte frame records sorted by `frame_id` (5.2), the empty registry
-//! (5.3), and the rules across the union of all of a build's registries that the
-//! renderer applies (5.2).
+//! Implements `matter-format.md` section 5, registry format version 2: the
+//! 24-byte header (5.1), the 184-byte frame records sorted by `frame_id`
+//! (5.2) with the oblateness (`j2`, `reference_radius`) and
+//! `principal_moments` fields, the empty registry with epoch 0 (5.3), and the
+//! rules across the union of all of a build's registries that the renderer
+//! applies (5.2). Registry format version 1 (144-byte records) is retired
+//! (section 9) and rejected with its own code.
 //!
 //! A [`Registry`] is one compiler's list of reference frames with their mass
 //! and state at the build epoch. It cannot hold a value that breaks a rule
@@ -12,8 +15,8 @@
 //! rules as [`decode`], and the fields are reachable only through accessors.
 //!
 //! A [`FrameTree`] is the union of every registry in a build. Building one with
-//! [`FrameTree::from_registries`] checks the cross-registry rules: one epoch,
-//! ids unique across the union, exactly one root, every parent present, and
+//! [`FrameTree::from_registries`] checks the cross-registry rules: one epoch
+//! among the registries that declare frames, ids unique across the union, exactly one root, every parent present, and
 //! no cycles.
 //!
 //! Every byte [`encode`] writes is a pure function of the registry. Validation
@@ -30,13 +33,17 @@ pub const ROOT_PARENT: u64 = u64::MAX;
 pub const MAGIC: [u8; 4] = [0x33, 0x47, 0x52, 0x47];
 
 /// The registry format version this module reads and writes.
-pub const VERSION: u16 = 1;
+pub const VERSION: u16 = 2;
+
+/// The retired registry format version with 144-byte records. Decoding it
+/// fails with [`codes::REGISTRY_VERSION_RETIRED`].
+pub const RETIRED_VERSION: u16 = 1;
 
 /// Length of the registry header in bytes.
 pub const HEADER_LEN: usize = 24;
 
 /// Length of one frame record in bytes.
-pub const RECORD_LEN: usize = 144;
+pub const RECORD_LEN: usize = 184;
 
 /// Largest permitted `max_depth`.
 pub const MAX_DEPTH: u8 = 31;
@@ -72,6 +79,17 @@ pub struct Frame {
     pub orientation: Quat,
     /// Angular velocity in radians per second about the frame axes.
     pub angular_velocity: Vec3,
+    /// Unnormalized second zonal harmonic of the frame's gravity field about
+    /// its z axis, dimensionless. Finite and at least 0; 0 for none.
+    pub j2: f64,
+    /// The radius `j2` is defined against. Greater than 0 when `j2` is above
+    /// 0, else 0.
+    pub reference_radius: Meters,
+    /// Principal moments of inertia in kilogram square meters about the
+    /// frame's x, y, and z axes, which are its principal axes. All 0 for a
+    /// frame whose spin is held constant, else all above 0 with each no
+    /// greater than the sum of the other two.
+    pub principal_moments: Vec3,
 }
 
 impl Frame {
@@ -93,9 +111,10 @@ impl Registry {
     /// Builds a registry, sorting `frames` by `frame_id` ascending.
     ///
     /// Fails with the code of the first broken rule: a non-finite epoch
-    /// (606), more frames than a `u32` counts (608), a repeated id (613), or
-    /// a frame field rule (614 to 625), checked frame by frame in id order.
-    /// `epoch` is seconds of Barycentric Dynamical Time since J2000.
+    /// (606), more frames than a `u32` counts (608), no frames with an epoch
+    /// other than 0 (609), a repeated id (613), or a frame field rule (614 to
+    /// 633), checked frame by frame in id order. `epoch` is seconds of
+    /// Barycentric Dynamical Time since J2000.
     pub fn new(epoch: Seconds, mut frames: Vec<Frame>) -> Result<Registry, ValidationError> {
         check_epoch(epoch.value())?;
         if u32::try_from(frames.len()).is_err() {
@@ -104,6 +123,7 @@ impl Registry {
                 format!("frame_count: {} frames do not fit a u32", frames.len()),
             ));
         }
+        check_empty_epoch(frames.len(), epoch.value())?;
         frames.sort_by_key(|f| f.frame_id);
         for (i, f) in frames.iter().enumerate() {
             if i > 0 && frames[i - 1].frame_id == f.frame_id {
@@ -114,11 +134,12 @@ impl Registry {
         Ok(Registry { epoch, frames })
     }
 
-    /// The empty registry of section 5.3: no frames.
-    ///
-    /// Fails with 606 if `epoch` is not finite.
-    pub fn empty(epoch: Seconds) -> Result<Registry, ValidationError> {
-        Registry::new(epoch, Vec::new())
+    /// The empty registry of section 5.3: no frames and epoch 0.
+    pub fn empty() -> Registry {
+        Registry {
+            epoch: Seconds::new(0.0),
+            frames: Vec::new(),
+        }
     }
 
     /// Epoch in seconds of Barycentric Dynamical Time since J2000.
@@ -145,6 +166,19 @@ fn check_epoch(epoch: f64) -> Result<(), ValidationError> {
             codes::REGISTRY_EPOCH_NOT_FINITE,
             format!("epoch: {epoch} is not finite"),
         ))
+    }
+}
+
+/// Section 5.3: a registry with no frames has epoch 0. Negative zero counts
+/// as 0, as it does for a root's position.
+fn check_empty_epoch(count: usize, epoch: f64) -> Result<(), ValidationError> {
+    if count == 0 && epoch != 0.0 {
+        Err(ValidationError::new(
+            codes::REGISTRY_EMPTY_EPOCH_NONZERO,
+            format!("epoch: {epoch:e} in a registry with no frames is not 0"),
+        ))
+    } else {
+        Ok(())
     }
 }
 
@@ -251,6 +285,55 @@ fn check_frame(i: usize, f: &Frame) -> Result<(), ValidationError> {
             format!("root velocity {:?} is not 0", f.velocity),
         );
     }
+    let j2 = f.j2;
+    if !j2.is_finite() {
+        return fail(codes::FRAME_J2_NOT_FINITE, format!("j2 {j2} is not finite"));
+    }
+    if j2 < 0.0 {
+        return fail(codes::FRAME_J2_NEGATIVE, format!("j2 {j2:e} is negative"));
+    }
+    let radius = f.reference_radius.value();
+    if !radius.is_finite() {
+        return fail(
+            codes::FRAME_REFERENCE_RADIUS_NOT_FINITE,
+            format!("reference_radius {radius} is not finite"),
+        );
+    }
+    if j2 > 0.0 && radius <= 0.0 {
+        return fail(
+            codes::FRAME_REFERENCE_RADIUS_NOT_POSITIVE,
+            format!("reference_radius {radius:e} is not greater than 0 while j2 is {j2:e}"),
+        );
+    }
+    if j2 == 0.0 && radius != 0.0 {
+        return fail(
+            codes::FRAME_REFERENCE_RADIUS_NONZERO,
+            format!("reference_radius {radius:e} is not 0 while j2 is 0"),
+        );
+    }
+    let m = f.principal_moments;
+    if !vec_finite(m) {
+        return fail(
+            codes::FRAME_MOMENTS_NOT_FINITE,
+            format!("principal_moments {m:?} is not finite"),
+        );
+    }
+    if !vec_zero(m) {
+        if !(m.x > 0.0 && m.y > 0.0 && m.z > 0.0) {
+            return fail(
+                codes::FRAME_MOMENTS_NOT_POSITIVE,
+                format!("principal_moments {m:?} are neither all 0 nor all greater than 0"),
+            );
+        }
+        if m.x > m.y + m.z || m.y > m.x + m.z || m.z > m.x + m.y {
+            return fail(
+                codes::FRAME_MOMENTS_TRIANGLE,
+                format!(
+                    "principal_moments {m:?}: one moment is greater than the sum of the other two"
+                ),
+            );
+        }
+    }
     Ok(())
 }
 
@@ -264,7 +347,7 @@ fn put_vec3(out: &mut Vec<u8>, v: Vec3) {
     }
 }
 
-/// Encodes a registry: the 24-byte header of section 5.1, then one 144-byte
+/// Encodes a registry: the 24-byte header of section 5.1, then one 184-byte
 /// record per frame (section 5.2) in `frame_id` order.
 ///
 /// Every `f64` is written with its exact bit pattern, so the output is a pure
@@ -293,6 +376,9 @@ pub fn encode(registry: &Registry) -> Vec<u8> {
             put_f64(&mut out, c);
         }
         put_vec3(&mut out, f.angular_velocity);
+        put_f64(&mut out, f.j2);
+        put_f64(&mut out, f.reference_radius.value());
+        put_vec3(&mut out, f.principal_moments);
     }
     debug_assert_eq!(out.len(), HEADER_LEN + RECORD_LEN * frames.len());
     out
@@ -330,16 +416,21 @@ fn read_frame(r: &[u8]) -> Frame {
         velocity: vec3_at(r, 64),
         orientation: Quat::new(f64_at(r, 88), f64_at(r, 96), f64_at(r, 104), f64_at(r, 112)),
         angular_velocity: vec3_at(r, 120),
+        j2: f64_at(r, 144),
+        reference_radius: Meters::new(f64_at(r, 152)),
+        principal_moments: vec3_at(r, 160),
     }
 }
 
 /// Decodes and validates a registry.
 ///
 /// Checks, in order, and reports the first failing rule: length at least 24
-/// (601), magic (602), version (603), the reserved header fields (604, 605),
-/// a finite epoch (606), length exactly `24 + 144 * frame_count` (607). Then
-/// record by record: ids strictly ascending (612 if lower than the previous,
-/// 613 if equal), reserved bytes (611), and the field rules (614 to 625).
+/// (601), magic (602), version (610 for the retired version 1, 603 for any
+/// other version than 2), the reserved header fields (604, 605), a finite
+/// epoch (606), length exactly `24 + 184 * frame_count` (607), epoch 0 when
+/// there are no frames (609). Then record by record: ids strictly ascending
+/// (612 if lower than the previous, 613 if equal), reserved bytes (611), and
+/// the field rules (614 to 633).
 /// Unsorted input is an error; the decoder never reorders records. See
 /// `docs/errors.md`.
 pub fn decode(bytes: &[u8]) -> Result<Registry, ValidationError> {
@@ -359,6 +450,14 @@ pub fn decode(bytes: &[u8]) -> Result<Registry, ValidationError> {
         ));
     }
     let version = u16_at(bytes, 4);
+    if version == RETIRED_VERSION {
+        return Err(ValidationError::new(
+            codes::REGISTRY_VERSION_RETIRED,
+            format!(
+                "format_version: {version} is retired, registries with 144-byte records are no longer read; emit version {VERSION} with 184-byte records"
+            ),
+        ));
+    }
     if version != VERSION {
         return Err(ValidationError::new(
             codes::REGISTRY_UNSUPPORTED_VERSION,
@@ -393,6 +492,7 @@ pub fn decode(bytes: &[u8]) -> Result<Registry, ValidationError> {
             ),
         ));
     }
+    check_empty_epoch(count as usize, epoch)?;
     let mut frames: Vec<Frame> = Vec::with_capacity(count as usize);
     for (i, r) in bytes[HEADER_LEN..]
         .as_chunks::<RECORD_LEN>()
@@ -463,20 +563,24 @@ impl FrameTree {
     /// across it.
     ///
     /// Checks, in order, and reports the first failing rule: every registry
-    /// has the bitwise same epoch (651), no id is declared twice (652),
-    /// exactly one root (653 if none, 654 if several), every parent is in the
-    /// union (655), and every frame reaches the root by following parents,
-    /// so there is no cycle (656). Empty registries are allowed and still
-    /// take part in the epoch check. A union with no frames at all, including
+    /// that declares at least one frame has the bitwise same epoch (651), no
+    /// id is declared twice (652), exactly one root (653 if none, 654 if
+    /// several), every parent is in the union (655), and every frame reaches
+    /// the root by following parents, so there is no cycle (656). Empty
+    /// registries are allowed and take no part in the epoch check (their
+    /// epoch is 0 by section 5.3). A union with no frames at all, including
     /// an empty slice, has no root and fails with 653.
     pub fn from_registries(registries: &[Registry]) -> Result<FrameTree, ValidationError> {
-        let epoch = registries.first().map_or(Seconds::new(0.0), |r| r.epoch());
-        for (i, r) in registries.iter().enumerate() {
+        let mut declaring = registries.iter().enumerate().filter(|(_, r)| !r.is_empty());
+        let (first, epoch) = declaring
+            .next()
+            .map_or((0, Seconds::new(0.0)), |(i, r)| (i, r.epoch()));
+        for (i, r) in declaring {
             if r.epoch().value().to_bits() != epoch.value().to_bits() {
                 return Err(ValidationError::new(
                     codes::UNION_EPOCH_MISMATCH,
                     format!(
-                        "registry {i}: epoch {:e} differs from registry 0 epoch {:e}",
+                        "registry {i}: epoch {:e} differs from registry {first} epoch {:e}",
                         r.epoch().value(),
                         epoch.value()
                     ),
@@ -593,8 +697,8 @@ impl FrameTree {
             .ok()
     }
 
-    /// The common epoch of every registry, seconds of Barycentric Dynamical
-    /// Time since J2000.
+    /// The common epoch of every registry that declares frames, seconds of
+    /// Barycentric Dynamical Time since J2000.
     pub fn epoch(&self) -> Seconds {
         self.epoch
     }
@@ -663,6 +767,9 @@ mod tests {
             velocity: Vec3::zero(),
             orientation: Quat::new(0.0, 0.0, 0.6, 0.8),
             angular_velocity: Vec3::new(0.0, 0.0, 2.9e-6),
+            j2: 2.0e-7,
+            reference_radius: Meters::new(7.0e8),
+            principal_moments: Vec3::new(5.7e46, 5.7e46, 5.8e46),
         }
     }
 
@@ -677,6 +784,9 @@ mod tests {
             velocity: Vec3::new(0.0, 2.98e4, 1.0),
             orientation: Quat::new(0.48, 0.6, 0.0, 0.64),
             angular_velocity: Vec3::new(0.0, 0.0, 7.3e-5),
+            j2: 0.0,
+            reference_radius: Meters::new(0.0),
+            principal_moments: Vec3::zero(),
         }
     }
 
@@ -706,11 +816,19 @@ mod tests {
     }
 
     #[test]
-    fn empty_is_header_only() {
-        let r = Registry::empty(epoch()).unwrap();
+    fn empty_is_header_only_with_epoch_zero() {
+        let r = Registry::empty();
         let b = encode(&r);
         assert_eq!(b.len(), HEADER_LEN);
+        assert_eq!(u16_at(&b, 4), 2);
+        assert_eq!(f64_at(&b, 8), 0.0);
         assert!(decode(&b).unwrap().is_empty());
+        assert_eq!(Registry::new(Seconds::new(0.0), vec![]).unwrap(), r);
+        assert!(Registry::new(Seconds::new(-0.0), vec![]).is_ok());
+        assert_eq!(code(Registry::new(epoch(), vec![])), 609);
+        let mut b = b;
+        b[8..16].copy_from_slice(&1.0f64.to_le_bytes());
+        assert_eq!(code(decode(&b)), 609);
     }
 
     #[test]
@@ -728,13 +846,25 @@ mod tests {
         assert_eq!(f64_at(r, 88), 0.48);
         assert_eq!(f64_at(r, 112), 0.64);
         assert_eq!(f64_at(r, 136), 7.3e-5);
+        assert_eq!(f64_at(r, 144), 0.0);
+        assert_eq!(f64_at(r, 152), 0.0);
+        assert_eq!(f64_at(r, 176), 0.0);
+
+        let b = encode(&reg(vec![root(1)]));
+        let r = &b[HEADER_LEN..];
+        assert_eq!(r.len(), RECORD_LEN);
+        assert_eq!(f64_at(r, 144), 2.0e-7);
+        assert_eq!(f64_at(r, 152), 7.0e8);
+        assert_eq!(f64_at(r, 160), 5.7e46);
+        assert_eq!(f64_at(r, 168), 5.7e46);
+        assert_eq!(f64_at(r, 176), 5.8e46);
     }
 
     type Edit = fn(&mut Frame);
 
     #[test]
     fn new_rejects_each_field_rule() {
-        let cases: [(u16, Edit); 12] = [
+        let cases: [(u16, Edit); 22] = [
             (614, |f| f.root_extent = Meters::new(f64::NAN)),
             (615, |f| f.root_extent = Meters::new(0.0)),
             (616, |f| f.max_depth = 32),
@@ -755,6 +885,19 @@ mod tests {
                 f.parent_frame_id = ROOT_PARENT;
                 f.position = Vec3::zero();
             }),
+            (626, |f| f.j2 = f64::NAN),
+            (627, |f| f.j2 = -1e-9),
+            (628, |f| f.reference_radius = Meters::new(f64::INFINITY)),
+            (629, |f| f.j2 = 1e-3),
+            (629, |f| {
+                f.j2 = 1e-3;
+                f.reference_radius = Meters::new(-6.4e6);
+            }),
+            (630, |f| f.reference_radius = Meters::new(6.4e6)),
+            (631, |f| f.principal_moments.z = f64::NAN),
+            (632, |f| f.principal_moments = Vec3::new(1.0, 1.0, 0.0)),
+            (632, |f| f.principal_moments = Vec3::new(-1.0, 1.0, 1.0)),
+            (633, |f| f.principal_moments = Vec3::new(1.0, 1.0, 2.5)),
         ];
         for (want, edit) in cases {
             let mut f = child(10, 1);
@@ -762,7 +905,21 @@ mod tests {
             assert_eq!(code(Registry::new(epoch(), vec![f])), want);
         }
         assert_eq!(code(Registry::new(epoch(), vec![root(1), root(1)])), 613);
-        assert_eq!(code(Registry::empty(Seconds::new(f64::NAN))), 606);
+        assert_eq!(code(Registry::new(Seconds::new(f64::NAN), vec![])), 606);
+    }
+
+    #[test]
+    fn oblateness_and_moments_accept_their_edges() {
+        let mut f = child(10, 1);
+        f.j2 = 1.08e-3;
+        f.reference_radius = Meters::new(6.378e6);
+        // Equality in the triangle rule is allowed: a thin flat plate.
+        f.principal_moments = Vec3::new(1.0, 1.0, 2.0);
+        assert!(Registry::new(epoch(), vec![f]).is_ok());
+        f.j2 = -0.0;
+        f.reference_radius = Meters::new(-0.0);
+        f.principal_moments = Vec3::new(-0.0, 0.0, 0.0);
+        assert!(Registry::new(epoch(), vec![f]).is_ok());
     }
 
     #[test]
@@ -789,7 +946,10 @@ mod tests {
             code(decode(&b))
         };
         assert_eq!(edit(3, 0x53), 602);
-        assert_eq!(edit(4, 2), 603);
+        assert_eq!(edit(4, 3), 603);
+        assert_eq!(edit(5, 1), 603);
+        assert_eq!(edit(4, 1), 610);
+        assert_eq!(edit(4, 0), 603);
         assert_eq!(edit(7, 1), 604);
         assert_eq!(edit(23, 1), 605);
         assert_eq!(edit(16, 3), 607);
@@ -811,7 +971,7 @@ mod tests {
     fn tree_queries() {
         let a = reg(vec![root(1), child(10, 1), child(20, 1)]);
         let b = reg(vec![child(11, 10), child(5, 1)]);
-        let empty = Registry::empty(epoch()).unwrap();
+        let empty = Registry::empty();
         let t = FrameTree::from_registries(&[a, empty, b]).unwrap();
         assert_eq!(t.root().frame_id, 1);
         assert_eq!(t.epoch(), epoch());
@@ -832,14 +992,23 @@ mod tests {
 
     #[test]
     fn tree_rejects_each_union_rule() {
-        let other = Registry::new(Seconds::new(8.0e8 + 1.0), vec![]).unwrap();
+        let other = Registry::new(Seconds::new(8.0e8 + 1.0), vec![child(10, 1)]).unwrap();
         assert_eq!(
             code(FrameTree::from_registries(&[reg(vec![root(1)]), other])),
             651
         );
-        let pos = Registry::empty(Seconds::new(0.0)).unwrap();
-        let neg = Registry::empty(Seconds::new(-0.0)).unwrap();
+        let pos = Registry::new(Seconds::new(0.0), vec![root(1)]).unwrap();
+        let neg = Registry::new(Seconds::new(-0.0), vec![child(10, 1)]).unwrap();
         assert_eq!(code(FrameTree::from_registries(&[pos, neg])), 651);
+        // Empty registries carry epoch 0 and take no part in the epoch check.
+        let t = FrameTree::from_registries(&[
+            Registry::empty(),
+            reg(vec![root(1)]),
+            Registry::empty(),
+            reg(vec![child(10, 1)]),
+        ])
+        .unwrap();
+        assert_eq!(t.epoch(), epoch());
         assert_eq!(
             code(FrameTree::from_registries(&[
                 reg(vec![root(1), child(10, 1)]),
@@ -848,7 +1017,7 @@ mod tests {
             652
         );
         assert_eq!(code(FrameTree::from_registries(&[])), 653);
-        assert_eq!(code(FrameTree::from_registries(&[reg(vec![])])), 653);
+        assert_eq!(code(FrameTree::from_registries(&[Registry::empty()])), 653);
         assert_eq!(
             code(FrameTree::from_registries(&[
                 reg(vec![root(1)]),
