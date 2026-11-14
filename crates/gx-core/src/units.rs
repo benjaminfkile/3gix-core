@@ -78,6 +78,10 @@ quantity! {
     Meters
 }
 quantity! {
+    /// An area in square meters (m^2).
+    SquareMeters
+}
+quantity! {
     /// A volume in cubic meters (m^3).
     CubicMeters
 }

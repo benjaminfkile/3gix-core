@@ -328,6 +328,28 @@ pub fn acceleration_from_section(point_in_frame: Vec3, section: &Section) -> Vec
     a
 }
 
+/// The Newtonian acceleration, m/s^2, of a massless test point at `point`
+/// from every massive body, point mass plus the J2 force of every oblate
+/// body, summed in slice order. The first post-Newtonian terms are left
+/// out: this is the field the observer of `space-model.md` section 6.3
+/// feels, where they are negligible. A body at exactly `point` exerts
+/// nothing. `point` and the body positions must share one coordinate
+/// system; the result is in its axes.
+pub fn newtonian_field_at(point: Vec3, bodies: &[Body]) -> Vec3 {
+    let mut a = Vec3::zero();
+    for b in bodies {
+        let mu = b.mu();
+        if mu <= 0.0 {
+            continue;
+        }
+        a = a + pull(point, b.position, b.mass.value());
+        if b.j2 > 0.0 {
+            a = a + oblate_pull(point - b.position, b, mu);
+        }
+    }
+    a
+}
+
 /// The pull at `point` of a mass `m` at `source`, or zero if they coincide.
 fn pull(point: Vec3, source: Vec3, m: f64) -> Vec3 {
     let d = source - point;

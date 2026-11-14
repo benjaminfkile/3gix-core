@@ -1,0 +1,129 @@
+{
+  "cases": [
+    {
+      "frame_id": 4,
+      "interval_seconds": {
+        "bits": "0x40f5180000000000",
+        "decimal": "8.64e4"
+      },
+      "max_step_seconds": {
+        "bits": "0x40ac200000000000",
+        "decimal": "3.6e3"
+      },
+      "name": "companion-thirty-days",
+      "observer": [
+        {
+          "bits": "0x424176592e000000",
+          "decimal": "1.5e11"
+        },
+        {
+          "bits": "0x416312d000000000",
+          "decimal": "1e7"
+        },
+        {
+          "bits": "0x0000000000000000",
+          "decimal": "0e0"
+        }
+      ],
+      "state_file": "companion-thirty-days.bin",
+      "t_seconds": {
+        "bits": "0x41c83795c0000000",
+        "decimal": "8.12592e8"
+      }
+    },
+    {
+      "frame_id": 3,
+      "interval_seconds": {
+        "bits": "0x40d5180000000000",
+        "decimal": "2.16e4"
+      },
+      "max_step_seconds": {
+        "bits": "0x408c200000000000",
+        "decimal": "9e2"
+      },
+      "name": "oblate-one-day",
+      "observer": [
+        {
+          "bits": "0xc2574876e8000000",
+          "decimal": "-4e11"
+        },
+        {
+          "bits": "0x42374876e8000000",
+          "decimal": "1e11"
+        },
+        {
+          "bits": "0x0000000000000000",
+          "decimal": "0e0"
+        }
+      ],
+      "state_file": "oblate-one-day.bin",
+      "t_seconds": {
+        "bits": "0x41c8247800000000",
+        "decimal": "8.100864e8"
+      }
+    },
+    {
+      "frame_id": 6,
+      "interval_seconds": {
+        "bits": "0x40ac200000000000",
+        "decimal": "3.6e3"
+      },
+      "max_step_seconds": {
+        "bits": "0x4082c00000000000",
+        "decimal": "6e2"
+      },
+      "name": "clamped",
+      "observer": [
+        {
+          "bits": "0x0000000000000000",
+          "decimal": "0e0"
+        },
+        {
+          "bits": "0x0000000000000000",
+          "decimal": "0e0"
+        },
+        {
+          "bits": "0x0000000000000000",
+          "decimal": "0e0"
+        }
+      ],
+      "state_file": "clamped.bin",
+      "t_seconds": {
+        "bits": "0x41c823cf72000000",
+        "decimal": "8.100001e8"
+      }
+    },
+    {
+      "frame_id": 5,
+      "interval_seconds": {
+        "bits": "0x40e5180000000000",
+        "decimal": "4.32e4"
+      },
+      "max_step_seconds": {
+        "bits": "0x409c200000000000",
+        "decimal": "1.8e3"
+      },
+      "name": "probe-two-days",
+      "observer": [
+        {
+          "bits": "0x0000000000000000",
+          "decimal": "0e0"
+        },
+        {
+          "bits": "0x0000000000000000",
+          "decimal": "0e0"
+        },
+        {
+          "bits": "0x0000000000000000",
+          "decimal": "0e0"
+        }
+      ],
+      "state_file": "probe-two-days.bin",
+      "t_seconds": {
+        "bits": "0x41c82520c0000000",
+        "decimal": "8.101728e8"
+      }
+    }
+  ],
+  "registry": "registry.bin"
+}
