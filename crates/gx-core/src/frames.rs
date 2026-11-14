@@ -291,6 +291,9 @@ mod tests {
             velocity: position.scale(0.5),
             orientation,
             angular_velocity: Vec3::zero(),
+            j2: 0.0,
+            reference_radius: Meters::new(0.0),
+            principal_moments: Vec3::zero(),
         }
     }
 

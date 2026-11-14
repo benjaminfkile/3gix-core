@@ -11,10 +11,26 @@ The hub's promise is that one fingerprint means one byte sequence. Every functio
 
 ## How the registry encoder keeps the promise
 
-- Fixed layout: the 24-byte header and 144-byte records of `matter-format.md` section 5, little-endian, reserved bytes written as 0.
+- Fixed layout: the 24-byte header and 184-byte records of `matter-format.md` section 5 (registry format version 2), little-endian, reserved bytes written as 0. An empty registry always carries epoch 0.
 - Records are always in `frame_id` order: `Registry::new` sorts, and `decode` rejects unsorted input rather than reordering it.
 - Every `f64` is written with its exact bit pattern, including negative zero.
 - The conformance generator builds orientations from rational unit quaternions, so no platform trigonometry enters the vectors.
+
+## Hashes, addresses, manifests, and module bytes
+
+- SHA-256 is written out in `gx_core::sha256` with integer operations only, no platform intrinsics and no dependency, so every target hashes with the same code.
+- A section address is SHA-256 over a fixed little-endian preimage (`client-compute.md` section 3), and is written as lowercase hex. The chunk key in it is the canonical text form, which parsing and printing round trip exactly.
+- Manifests, request bytes, tile bytes, and source id lists are fixed little-endian layouts. Manifest entries are always in id order (`Manifest::new` sorts, `decode` rejects unsorted input), and tiles and source ids must ascend, so there is one byte form per value.
+
+## Time scale conversion
+
+`timescale::utc_ms_to_tdb_seconds` and `tdb_seconds_to_utc_ms` produce no hub bytes, but they feed every computation (a registry's epoch is the origin converted to TDB), so they are held to the same rule:
+
+- UTC to TAI is integer arithmetic on milliseconds with the built-in leap second table, converted to `f64` once.
+- The periodic TDB term uses `detmath::sin`, never the platform `sin`.
+- The inverse iterates a fixed-point step until `tt` repeats bitwise, at most 8 times, and rounds to the nearest millisecond with `f64::round`.
+
+`scripts/wasm-node-check.mjs` runs the WebAssembly build under Node against `conformance/timescale/` and `conformance/address/` and requires the same bit patterns and addresses as the native tests.
 
 ## zstd is part of the format
 
@@ -29,12 +45,12 @@ Decoding is not affected: any conforming zstd decoder reads any conforming frame
 
 ## The proof
 
-`tools/conformance-gen` regenerates `conformance/matter/` and `conformance/registry/` from code with fixed values and a fixed-seed generator written in the tool. Two checks run it:
+`tools/conformance-gen` regenerates `conformance/matter/`, `conformance/registry/`, `conformance/container/`, `conformance/address/`, `conformance/manifest/`, `conformance/module-io/`, and `conformance/timescale/` from code with fixed values and a fixed-seed generator written in the tool. Two checks run it:
 
 - `cargo test -p conformance-gen` runs the generator into a scratch directory and compares every file to the checked-in copy byte for byte.
-- `scripts/ci.sh` runs it into `target/conformance-check` and fails on any `diff -r` difference against `conformance/matter` or `conformance/registry`.
+- `scripts/ci.sh` runs it into `target/conformance-check` and fails on any `diff -r` difference against those directories.
 
-To refresh the vectors after an intended change: `rm -rf conformance/matter conformance/registry && cargo run -p conformance-gen -- conformance`.
+To refresh the vectors after an intended change: `rm -rf conformance/matter conformance/registry conformance/container conformance/address conformance/manifest conformance/module-io conformance/timescale && cargo run -p conformance-gen -- conformance`.
 
 ## How the laws keep the promise
 
@@ -43,4 +59,4 @@ The laws (`frames`, `gravity`, `integrate`, `radiance`, `emission`, `extinction`
 - Frames are always visited by ascending `frame_id`, and gravity sources are summed in that order. No hash map is iterated.
 - Only `+`, `-`, `*`, `/`, and `sqrt` are used, all correctly rounded in IEEE 754. No platform `sin`, `cos`, or `cbrt`: the Yoshida coefficients come from a written-out cube root of 2, and orientations advance by `normalize(q + 0.5 * dt * q * (0, w))` with no trigonometry.
 - `advance` splits an interval into `ceil(|interval| / max_step)` equal steps and sets the time to exactly the target at the end.
-- `radiance`, `extinction`, and `lod` need `exp` and `tan`. These are written out in `detmath` from correctly rounded operations, never taken from the platform math library. `band_radiance` uses a fixed 64-point midpoint rule per band. See `laws.md`.
+- `radiance`, `extinction`, and `lod` need `exp` and `tan`, and `timescale` needs `sin`. These are written out in `detmath` from correctly rounded operations, never taken from the platform math library. `band_radiance` uses a fixed 64-point midpoint rule per band. See `laws.md`.

@@ -1,0 +1,64 @@
+{
+  "cases": [
+    {
+      "origin_utc_ms": "1763130000000",
+      "span_index": "0",
+      "span_seconds": "0",
+      "t_utc_ms": "1763130000000"
+    },
+    {
+      "origin_utc_ms": "1763130000000",
+      "span_index": "0",
+      "span_seconds": "0",
+      "t_utc_ms": "1764129999999"
+    },
+    {
+      "origin_utc_ms": "1763130000000",
+      "span_index": "0",
+      "span_seconds": "60",
+      "t_utc_ms": "1763130000000"
+    },
+    {
+      "origin_utc_ms": "1763130000000",
+      "span_index": "0",
+      "span_seconds": "60",
+      "t_utc_ms": "1763130059999"
+    },
+    {
+      "origin_utc_ms": "1763130000000",
+      "span_index": "1",
+      "span_seconds": "60",
+      "t_utc_ms": "1763130060000"
+    },
+    {
+      "origin_utc_ms": "1763130000000",
+      "span_index": "25",
+      "span_seconds": "3600",
+      "t_utc_ms": "1763220000001"
+    },
+    {
+      "code": 961,
+      "origin_utc_ms": "1763130000000",
+      "span_seconds": "60",
+      "t_utc_ms": "1763129999999"
+    },
+    {
+      "code": 961,
+      "origin_utc_ms": "1763130000000",
+      "span_seconds": "0",
+      "t_utc_ms": "1763129999999"
+    },
+    {
+      "origin_utc_ms": "-9223372036854775808",
+      "span_index": "18446744073709551",
+      "span_seconds": "1",
+      "t_utc_ms": "9223372036854775807"
+    },
+    {
+      "origin_utc_ms": "-9223372036854775808",
+      "span_index": "0",
+      "span_seconds": "18446744073709551615",
+      "t_utc_ms": "9223372036854775807"
+    }
+  ]
+}

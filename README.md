@@ -8,9 +8,11 @@ The shared library of the 3GIX space runtime. It is the only place the renderer,
 - **Units.** Branded SI types. Bare numbers do not enter the encoder.
 - **Laws.** Implemented: reference frames with a floating origin (`frames::FrameSystem`, with `relative` as the camera-relative primitive and `nearest_frame` for re-parenting), Newtonian gravity from point masses and from coarse density grids (`gravity`, `G = 6.67430e-11 m^3 kg^-1 s^-2`, no softening), and a fixed-step symplectic N-body integrator (`integrate`, velocity Verlet or fourth order Yoshida, the default) that moves every frame under the gravity of every massive frame, O(n^2) per stage, and turns every frame at its constant angular velocity. Explicitly not implemented: relativity (Newtonian gravity is the law), torques (angular velocity stays constant), collisions between frames, and fluid relaxation to the equipotential surface. Also implemented: blackbody radiance from temperature (`radiance`, Planck's law per wavelength and integrated over three fixed bands), emitter summaries of hot matter (`emission`), extinction for volumetric matter (`extinction`), and octree cell selection for a camera (`lod`). Every law function, its units, and its determinism contract are listed in `docs/laws.md`.
 - **Bands.** Format version 1 fixes three wavelength bands, `radiance::BAND_EDGES = [700e-9, 600e-9, 500e-9, 400e-9]` meters: band 0 is 600 to 700 nm, band 1 is 500 to 600 nm, band 2 is 400 to 500 nm. A sample's three albedo values map to these bands in this order, and every per-band law output is band 0 first. Band radiance is a 64-point midpoint rule per band, fixed as part of the deterministic contract.
-- **Chunk keys and the frame registry.** Encoding, decoding, and validation.
+- **Chunk keys and the frame registry.** Encoding, decoding, and validation. The registry is format version 2: 184-byte frame records with `j2`, `reference_radius`, and `principal_moments`; version 1 is rejected.
+- **Section addresses, source manifests, module bytes.** The SHA-256 section address and span index of `client-compute.md` sections 2.4 and 3 (`address`), source manifests (`manifest`), and the request, tile, and source id bytes that cross the module ABI (`module_io`), all on a dependency-free SHA-256 (`sha256`).
+- **Time scales.** UTC milliseconds to seconds of Barycentric Dynamical Time since J2000 and back (`timescale`), with a built-in leap second table through 2017-01-01 that must be extended when a new leap second is announced.
 - **Hub container.** Decoding of the container the hub stores per chunk, with every table entry bounds checked. The hub's layer ids are read past and dropped.
-- **C ABI.** `gx_format_version`, `gx_validate`, and `gx_error_name`, exported from a native shared library so a .NET hub or a compiler in any language can call the validator.
+- **C ABI.** `gx_format_version`, `gx_validate`, `gx_error_name`, `gx_section_address`, and `gx_manifest_validate`, exported from a native shared library so a .NET hub or a compiler in any language can call the validator and compute addresses.
 - **WebAssembly build.** The same crate for the browser renderer and sandboxed compilers.
 - **Conformance vectors.** Golden sections and registries any second implementation must pass.
 - **Vocabulary lint.** A CI script consumers run that fails on domain words in source.
@@ -25,14 +27,15 @@ The format has no name, tag, label, or free-form string field. Frame ids are int
 
 The architecture and the byte-level format are specified in the hub repository until the first implementation lands here, at which point the format spec moves to `docs/` in this repository:
 
-- Architecture: `3GIXHub/docs/architecture/space-model.md`
-- Matter format v1: `3GIXHub/docs/architecture/matter-format.md`
+- Architecture: `3GIXHub/docs/architecture/space-model.md` (v2)
+- Hub, client, and module contract: `3GIXHub/docs/architecture/client-compute.md`
+- Byte formats (matter sections version 1, registry version 2): `3GIXHub/docs/architecture/matter-format.md`
 
 ## Toolchain
 
 Rust stable. Targets: the host triple for native builds and `wasm32-unknown-unknown` for the browser. `wasm-pack` drives WebAssembly builds. `cargo fmt --check`, `cargo clippy -- -D warnings`, and `cargo test` must pass on every change.
 
-`sh scripts/ci.sh` runs the full check locally: toolchain versions, format, clippy, tests, regeneration of the conformance vectors with a byte-for-byte diff against `conformance/matter`, `conformance/registry`, and `conformance/container`, the WebAssembly build, a check that the generated TypeScript declarations carry the three exports, `wasm-opt`, the headless GPU compute probe, the vocabulary lint, the native shared library build, and the C ABI check program. See `docs/toolchain.md` for the last recorded run.
+`sh scripts/ci.sh` runs the full check locally: toolchain versions, format, clippy, tests, regeneration of the conformance vectors with a byte-for-byte diff against every directory under `conformance/`, the WebAssembly build, a check that the generated TypeScript declarations carry every export, the WebAssembly build run under Node against the native conformance vectors (`scripts/wasm-node-check.mjs`), `wasm-opt`, the headless GPU compute probe, the vocabulary lint, the native shared library build, and the C ABI check program. See `docs/toolchain.md` for the last recorded run.
 
 ## Layout
 
@@ -53,14 +56,20 @@ crates/gx-core/      the core library: rlib, C ABI cdylib, and WebAssembly expor
   src/emission.rs    hot matter of a section summarized as one emitter
   src/extinction.rs  extinction coefficient, transmittance, optical depth
   src/lod.rs         octree cell selection for a camera
-  src/detmath.rs     deterministic exp, expm1, and tan for the laws
+  src/detmath.rs     deterministic exp, expm1, sin, and tan for the laws
+  src/sha256.rs      SHA-256 and lowercase hex
+  src/address.rs     section addresses and span indices
+  src/manifest.rs    source manifests: encode, decode, validate, hash, lookup
+  src/module_io.rs   module request, tile, and source id bytes
+  src/timescale.rs   UTC milliseconds to TDB seconds since J2000 and back
   src/container.rs   hub container: decode a chunk of matter sections or of
                      registries, and encode one for tests
   src/validate.rs    top-level validator: matter or registry chosen by key
   src/error.rs       ValidationError, the stable numeric error codes, and
                      their short names
-  src/lib.rs         C ABI (gx_format_version, gx_validate, gx_error_name)
-                     and the wasm32 exports
+  src/lib.rs         C ABI (gx_format_version, gx_validate, gx_error_name,
+                     gx_section_address, gx_manifest_validate) and the
+                     wasm32 exports
   tests/             integration tests, including the conformance vector checks
                      the orbit tests (laws.rs), and the radiance,
                      emission, and extinction checks (radiance_laws.rs)
@@ -77,6 +86,11 @@ conformance/         conformance vectors any implementation must pass
   container/valid/   a matter chunk and a registry chunk with expected results
   container/invalid/ one file per container code, index.json maps file name
                      to expected code
+  address/           section address cases and span index cases
+  manifest/          valid manifests and one or more files per manifest code
+  module-io/         request, tile, and source id vectors, valid and invalid
+  timescale/         UTC to TDB cases with bit patterns, and the inverse
+                     inside a leap second
 include/gx_core.h    hand-written C header for the C ABI
 tools/abi-check/     C program that links the shared library through the header
 tools/gpu-probe/     headless GPU compute probe (wgpu over Vulkan)
@@ -91,11 +105,11 @@ docs/                toolchain record, error codes (errors.md), determinism
 
 ## Using from C, .NET, or WebAssembly
 
-The native build (`cargo build -p gx-core --release`) produces `target/release/libgx_core.so`. Its C ABI is declared in `include/gx_core.h`: `gx_format_version`, `gx_validate` (one section under one chunk key, matter or registry chosen by the key), and `gx_error_name`. The buffer and return code contract is in `docs/errors.md`.
+The native build (`cargo build -p gx-core --release`) produces `target/release/libgx_core.so`. Its C ABI is declared in `include/gx_core.h`: `gx_format_version`, `gx_validate` (one section under one chunk key, matter or registry chosen by the key), `gx_error_name`, `gx_section_address` (the 32-byte section address of `client-compute.md` section 3), and `gx_manifest_validate` (a source manifest). The buffer and return code contract is in `docs/errors.md`.
 
 - **C and C++.** Include `gx_core.h` and link `-lgx_core`. `tools/abi-check/abi_check.c` is a complete caller; `scripts/ci.sh` builds it with the system `cc` and runs it against the conformance vectors.
 - **.NET.** P/Invoke the same symbols from `libgx_core`: `size_t` maps to `nuint`, `uint8_t*` and `char*` to `byte*` or `byte[]`, and the return value to `int`.
-- **WebAssembly.** `wasm-pack build crates/gx-core --target web` produces a package with three exports: `format_version()`, `validate(key, bytes)`, which throws an `Error` with message `CODE: REASON`, and `decode_chunk_mass(key, bytes)`, the total mass in kilograms of every section in a hub container. The C ABI symbols are exported from the WebAssembly module too.
+- **WebAssembly.** `wasm-pack build crates/gx-core --target web` produces a package with these exports: `format_version()`, `validate(key, bytes)`, which throws an `Error` with message `CODE: REASON`, `decode_chunk_mass(key, bytes)`, the total mass in kilograms of every section in a hub container, `section_address(module, manifest, origin_utc_ms, span_seconds, span_index, key)`, the address as lowercase hex (the integers are `BigInt`, `manifest` may be `undefined`), `manifest_validate(bytes)`, `utc_ms_to_tdb_seconds(utc_ms)`, and `tdb_seconds_to_utc_ms(tdb)`. The C ABI symbols are exported from the WebAssembly module too.
 
 ## Contributing rules
 

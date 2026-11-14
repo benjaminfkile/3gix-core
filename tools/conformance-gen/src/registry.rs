@@ -11,7 +11,9 @@
 //!   and either the expected tree or the expected code.
 //!
 //! Every value is a fixed literal. Orientations are rational unit
-//! quaternions, so no trigonometry enters the output.
+//! quaternions, so no trigonometry enters the output. Registries are format
+//! version 2: the root, frame 30, and frame 31 declare an oblateness and
+//! principal moments, the others declare none.
 
 use std::collections::BTreeMap;
 
@@ -50,6 +52,19 @@ fn frame(
         velocity: v(velocity),
         orientation: Quat::new(qx, qy, qz, qw),
         angular_velocity: v(angular_velocity),
+        j2: 0.0,
+        reference_radius: Meters::new(0.0),
+        principal_moments: Vec3::zero(),
+    }
+}
+
+/// `f` with an oblateness and principal moments in kilogram square meters.
+fn shaped(f: Frame, j2: f64, reference_radius: f64, moments: [f64; 3]) -> Frame {
+    Frame {
+        j2,
+        reference_radius: Meters::new(reference_radius),
+        principal_moments: Vec3::new(moments[0], moments[1], moments[2]),
+        ..f
     }
 }
 
@@ -59,7 +74,7 @@ fn registry(epoch: f64, frames: Vec<Frame>) -> Registry {
 
 /// The root of every tree: a heavy central mass with a slow spin.
 fn root() -> Frame {
-    frame(
+    let f = frame(
         1,
         ROOT_PARENT,
         1.2e13,
@@ -69,7 +84,8 @@ fn root() -> Frame {
         [0.0; 3],
         [0.0, 0.0, 0.6, 0.8],
         [0.0, 0.0, 2.865e-6],
-    )
+    );
+    shaped(f, 2.0e-7, 6.957e8, [5.7e46, 5.7e46, 5.8e46])
 }
 
 /// The four children of the root, in near circular motion around it.
@@ -97,16 +113,21 @@ fn children() -> [Frame; 4] {
             [0.0, 0.6, 0.0, 0.8],
             [0.0, 0.0, -2.99e-7],
         ),
-        frame(
-            30,
-            1,
-            4.0e8,
-            20,
-            5.972e24,
-            [0.0, -1.496e11, 2.0e6],
-            [2.978e4, 0.0, 0.0],
-            [0.48, 0.6, 0.0, 0.64],
-            [0.0, 0.0, 7.292e-5],
+        shaped(
+            frame(
+                30,
+                1,
+                4.0e8,
+                20,
+                5.972e24,
+                [0.0, -1.496e11, 2.0e6],
+                [2.978e4, 0.0, 0.0],
+                [0.48, 0.6, 0.0, 0.64],
+                [0.0, 0.0, 7.292e-5],
+            ),
+            1.0826e-3,
+            6.378137e6,
+            [8.008e37, 8.008e37, 8.034e37],
         ),
         frame(
             40,
@@ -124,7 +145,7 @@ fn children() -> [Frame; 4] {
 
 /// A satellite of frame 30.
 fn grandchild() -> Frame {
-    frame(
+    let f = frame(
         31,
         30,
         8.0e6,
@@ -134,7 +155,8 @@ fn grandchild() -> Frame {
         [0.0, 1.022e3, 0.0],
         [0.0, 0.0, -0.28, 0.96],
         [0.0, 0.0, 2.6617e-6],
-    )
+    );
+    shaped(f, 2.03e-4, 1.738e6, [8.7e34, 8.8e34, 8.73e34])
 }
 
 /// A small, distant child of the root, unrelated to the others.
@@ -175,6 +197,9 @@ fn summary(r: &Registry) -> Value {
                 "velocity": v3(f.velocity),
                 "orientation": [number(q.x), number(q.y), number(q.z), number(q.w)],
                 "angular_velocity": v3(f.angular_velocity),
+                "j2": number(f.j2),
+                "reference_radius": number(f.reference_radius.value()),
+                "principal_moments": v3(f.principal_moments),
             })
         })
         .collect();
@@ -187,7 +212,7 @@ fn summary(r: &Registry) -> Value {
 
 fn valid() -> Vec<File> {
     let regs = [
-        ("empty", registry(EPOCH, vec![])),
+        ("empty", Registry::empty()),
         ("single-root", registry(EPOCH, vec![root()])),
         ("tree", tree()),
     ];
@@ -236,7 +261,26 @@ fn invalid() -> Vec<File> {
     add(
         "unsupported-version",
         codes::REGISTRY_UNSUPPORTED_VERSION,
-        &|b| b[4] = 2,
+        &|b| b[4] = 3,
+    );
+    add(
+        "unsupported-version-zero",
+        codes::REGISTRY_UNSUPPORTED_VERSION,
+        &|b| b[4] = 0,
+    );
+    // The tree written in the retired version 1 layout: the same header with
+    // version 1 and each record cut to its first 144 bytes.
+    add(
+        "version-1-registry",
+        codes::REGISTRY_VERSION_RETIRED,
+        &|b| {
+            let mut v1 = b[..HEADER_LEN].to_vec();
+            v1[4] = 1;
+            for r in b[HEADER_LEN..].chunks(RECORD_LEN) {
+                v1.extend_from_slice(&r[..144]);
+            }
+            *b = v1;
+        },
     );
     add(
         "reserved-u16-nonzero",
@@ -266,6 +310,14 @@ fn invalid() -> Vec<File> {
     add("frame-count-zero", codes::REGISTRY_LENGTH_MISMATCH, &|b| {
         b[16] = 0
     });
+    add(
+        "empty-epoch-nonzero",
+        codes::REGISTRY_EMPTY_EPOCH_NONZERO,
+        &|b| {
+            b.truncate(HEADER_LEN);
+            b[16] = 0;
+        },
+    );
 
     // Records.
     add(
@@ -352,6 +404,57 @@ fn invalid() -> Vec<File> {
         codes::ROOT_VELOCITY_NONZERO,
         &|b| put_f64(b, rec(0, 72), -1.0e-3),
     );
+    // Oblateness and moments: record 1 (frame 10) declares neither, record 3
+    // (frame 30) declares both.
+    add("j2-nan", codes::FRAME_J2_NOT_FINITE, &|b| {
+        put_f64(b, rec(3, 144), f64::NAN)
+    });
+    add("j2-infinite", codes::FRAME_J2_NOT_FINITE, &|b| {
+        put_f64(b, rec(1, 144), f64::INFINITY)
+    });
+    add("j2-negative", codes::FRAME_J2_NEGATIVE, &|b| {
+        put_f64(b, rec(1, 144), -1.0e-6)
+    });
+    add(
+        "reference-radius-infinite",
+        codes::FRAME_REFERENCE_RADIUS_NOT_FINITE,
+        &|b| put_f64(b, rec(3, 152), f64::INFINITY),
+    );
+    add(
+        "reference-radius-zero-with-j2",
+        codes::FRAME_REFERENCE_RADIUS_NOT_POSITIVE,
+        &|b| put_f64(b, rec(3, 152), 0.0),
+    );
+    add(
+        "reference-radius-negative-with-j2",
+        codes::FRAME_REFERENCE_RADIUS_NOT_POSITIVE,
+        &|b| put_f64(b, rec(3, 152), -6.378137e6),
+    );
+    add(
+        "reference-radius-without-j2",
+        codes::FRAME_REFERENCE_RADIUS_NONZERO,
+        &|b| put_f64(b, rec(1, 152), 2.44e6),
+    );
+    add("moments-nan", codes::FRAME_MOMENTS_NOT_FINITE, &|b| {
+        put_f64(b, rec(3, 168), f64::NAN)
+    });
+    add(
+        "moments-one-zero",
+        codes::FRAME_MOMENTS_NOT_POSITIVE,
+        &|b| put_f64(b, rec(3, 176), 0.0),
+    );
+    add(
+        "moments-negative",
+        codes::FRAME_MOMENTS_NOT_POSITIVE,
+        &|b| {
+            put_f64(b, rec(1, 160), -1.0e30);
+            put_f64(b, rec(1, 168), 1.0e30);
+            put_f64(b, rec(1, 176), 1.0e30);
+        },
+    );
+    add("moments-triangle", codes::FRAME_MOMENTS_TRIANGLE, &|b| {
+        put_f64(b, rec(3, 176), 1.7e38)
+    });
 
     let mut index = BTreeMap::new();
     let mut out = Vec::new();
@@ -394,7 +497,7 @@ fn union() -> Vec<File> {
     let regs: [(&str, Registry); 9] = [
         ("valid-a", valid_a()),
         ("valid-b", valid_b()),
-        ("empty", registry(EPOCH, vec![])),
+        ("empty", Registry::empty()),
         (
             "valid-b-later-epoch",
             registry(EPOCH + 1.0, vec![grandchild(), far_child()]),

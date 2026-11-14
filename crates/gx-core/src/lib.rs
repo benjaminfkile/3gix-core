@@ -10,10 +10,10 @@
 //! - [`matter`]: matter section encode, decode, validate, and composite
 //!   (`matter-format.md` section 3, matter section, with 3.5 compositing, and
 //!   section 4, validation, for matter sections).
-//! - [`registry`]: frame registry encode, decode, and validate, and the
-//!   union of a build's registries as a [`registry::FrameTree`]
-//!   (`matter-format.md` section 5, frame registry: header 5.1, frame
-//!   records and union rules 5.2, empty registry 5.3).
+//! - [`registry`]: frame registry format version 2 encode, decode, and
+//!   validate, and the union of a build's registries as a
+//!   [`registry::FrameTree`] (`matter-format.md` section 5, frame registry:
+//!   header 5.1, frame records and union rules 5.2, empty registry 5.3).
 //! - [`frames`]: reference frames with a floating origin, the current state
 //!   of every frame, and the transforms between frames (`space-model.md`
 //!   section 5, numerical devices, and section 6, time).
@@ -40,14 +40,28 @@
 //!   and registry by key (`matter-format.md` section 4, including step 3).
 //! - [`error`]: [`error::ValidationError`] and the stable numeric code table
 //!   for every section 4, 5, and 6 rule (`docs/errors.md`).
-//! - The C ABI (`matter-format.md` section 7): [`gx_format_version`],
-//!   [`gx_validate`], and [`gx_error_name`], declared in
+//! - [`sha256`]: the SHA-256 every hash and address uses, with lowercase hex
+//!   (`client-compute.md` sections 2.1, 3, and 5).
+//! - [`address`]: section addresses and span indices (`client-compute.md`
+//!   sections 2.4 and 3).
+//! - [`manifest`]: source manifests, encode, decode, validate, hash, and
+//!   look up (`client-compute.md` section 5.1).
+//! - [`module_io`]: module request bytes, tile bytes, and the source id
+//!   list (`client-compute.md` section 4).
+//! - [`timescale`]: UTC milliseconds to seconds of Barycentric Dynamical Time
+//!   since J2000 and back (`space-model.md` section 7 item 5).
+//! - The C ABI (`matter-format.md` section 7, `client-compute.md` sections 3
+//!   and 5.1): [`gx_format_version`], [`gx_validate`], [`gx_error_name`],
+//!   [`gx_section_address`], and [`gx_manifest_validate`], declared in
 //!   `include/gx_core.h`.
 //! - WebAssembly exports, on `wasm32` only: `format_version`, `validate`,
-//!   and `decode_chunk_mass`, built with `wasm-bindgen`.
+//!   `decode_chunk_mass`, `section_address`, `manifest_validate`,
+//!   `utc_ms_to_tdb_seconds`, and `tdb_seconds_to_utc_ms`, built with
+//!   `wasm-bindgen`.
 
 use core::ffi::c_char;
 
+pub mod address;
 pub mod container;
 mod detmath;
 pub mod emission;
@@ -58,9 +72,13 @@ pub mod gravity;
 pub mod integrate;
 pub mod key;
 pub mod lod;
+pub mod manifest;
 pub mod matter;
+pub mod module_io;
 pub mod radiance;
 pub mod registry;
+pub mod sha256;
+pub mod timescale;
 pub mod units;
 pub mod validate;
 
@@ -68,7 +86,8 @@ pub use validate::validate;
 
 use error::{codes, ValidationError};
 
-/// Version of the matter format this library reads and writes.
+/// Version of the matter section format this library reads and writes. The
+/// frame registry has its own version, [`registry::VERSION`] (2).
 pub const FORMAT_VERSION: u32 = 1;
 
 /// Returns the matter format version, [`FORMAT_VERSION`].
@@ -158,6 +177,142 @@ pub unsafe extern "C" fn gx_validate(
     }
 }
 
+/// The C ABI section address, on safe inputs: null pointer and key checks,
+/// then [`address::section_address`].
+fn section_address_ffi(
+    module: Option<&[u8; 32]>,
+    manifest: Option<&[u8; 32]>,
+    origin_utc_ms: i64,
+    span_seconds: u64,
+    span_index: u64,
+    key: Option<&[u8]>,
+) -> Result<[u8; 32], ValidationError> {
+    let module = module.ok_or_else(|| {
+        ValidationError::new(codes::ADDRESS_POINTER_NULL, "module32: null pointer")
+    })?;
+    let key = key.ok_or_else(|| {
+        ValidationError::new(
+            codes::KEY_POINTER_NULL,
+            "key: null pointer with non-zero key_len",
+        )
+    })?;
+    let key = core::str::from_utf8(key)
+        .map_err(|e| {
+            ValidationError::new(
+                codes::KEY_MALFORMED,
+                format!("key: not UTF-8 at byte {}", e.valid_up_to()),
+            )
+        })?
+        .parse::<key::ChunkKey>()
+        .map_err(|e| ValidationError::new(codes::KEY_MALFORMED, format!("key: {e}")))?;
+    Ok(address::section_address(
+        module,
+        manifest,
+        origin_utc_ms,
+        span_seconds,
+        span_index,
+        &key,
+    ))
+}
+
+/// Computes a section address (`client-compute.md` section 3) and writes its
+/// 32 bytes to `out32`.
+///
+/// `module32` is the module's SHA-256, `manifest32_or_null` the source
+/// manifest's SHA-256 or null for none, `origin_utc_ms` the space's origin or
+/// 0 when the layer's `usesOrigin` is false, `span_seconds` and `span_index`
+/// the layer's span length and the section's span, and `key` the chunk key as
+/// UTF-8 of `key_len` bytes, not NUL terminated.
+///
+/// Returns 0 on success. Returns 962 for a null `module32` or `out32`, 207
+/// for a null `key` with a non-zero `key_len`, and 206 for a key that is not
+/// UTF-8 or not a chunk key. On failure `out32` is not touched.
+///
+/// # Safety
+///
+/// A non-null `module32` and `manifest32_or_null` must each be valid for 32
+/// readable bytes, a non-null `key` for `key_len` readable bytes, and a
+/// non-null `out32` for 32 writable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn gx_section_address(
+    module32: *const u8,
+    manifest32_or_null: *const u8,
+    origin_utc_ms: i64,
+    span_seconds: u64,
+    span_index: u64,
+    key: *const u8,
+    key_len: usize,
+    out32: *mut u8,
+) -> i32 {
+    if out32.is_null() {
+        return i32::from(codes::ADDRESS_POINTER_NULL);
+    }
+    // SAFETY: the caller guarantees each non-null pointer is valid for its
+    // length, 32 bytes for the hashes.
+    let (module, manifest, key) = unsafe {
+        (
+            module32.cast::<[u8; 32]>().as_ref(),
+            manifest32_or_null.cast::<[u8; 32]>().as_ref(),
+            slice(key, key_len),
+        )
+    };
+    match section_address_ffi(
+        module,
+        manifest,
+        origin_utc_ms,
+        span_seconds,
+        span_index,
+        key,
+    ) {
+        Ok(a) => {
+            // SAFETY: `out32` is non-null and the caller guarantees it is
+            // valid for 32 writable bytes.
+            unsafe { core::ptr::copy_nonoverlapping(a.as_ptr(), out32, 32) };
+            0
+        }
+        Err(e) => i32::from(e.code),
+    }
+}
+
+/// Validates a source manifest (`client-compute.md` section 5.1).
+///
+/// Returns 0 on success, or the error code from `docs/errors.md` (901 to
+/// 907) on failure, and writes the reason into `err_buf` exactly as
+/// [`gx_validate`] does. A null `bytes` with a non-zero `len` fails with 106;
+/// a null `bytes` with length 0 is an empty input.
+///
+/// # Safety
+///
+/// A non-null `bytes` must be valid for `len` readable bytes. If `err_buf` is
+/// non-null and `err_cap` is non-zero, `err_buf` must point to at least
+/// `err_cap` writable bytes that do not overlap the input.
+#[no_mangle]
+pub unsafe extern "C" fn gx_manifest_validate(
+    bytes: *const u8,
+    len: usize,
+    err_buf: *mut c_char,
+    err_cap: usize,
+) -> i32 {
+    // SAFETY: the caller guarantees a non-null `bytes` is valid for `len`.
+    let bytes = unsafe { slice(bytes, len) };
+    let result = match bytes {
+        None => Err(ValidationError::new(
+            codes::BYTES_POINTER_NULL,
+            "bytes: null pointer with non-zero len",
+        )),
+        Some(b) => manifest::validate(b),
+    };
+    match result {
+        Ok(()) => 0,
+        Err(e) => {
+            // SAFETY: the caller guarantees `err_buf` is valid for `err_cap`
+            // bytes when it is non-null and `err_cap` is non-zero.
+            unsafe { write_reason(err_buf.cast::<u8>(), err_cap, &e.reason) };
+            i32::from(e.code)
+        }
+    }
+}
+
 /// Returns the short name of an error code, such as `BAD_MAGIC` for 102, as
 /// a pointer to a static NUL-terminated ASCII string. Unknown codes,
 /// including 0, give the empty string. Never returns null.
@@ -224,6 +379,63 @@ mod wasm {
         crate::validate(key, bytes).map_err(js)
     }
 
+    /// The section address (`client-compute.md` section 3) as lowercase
+    /// hex. `module` and `manifest` are 32-byte SHA-256 digests; pass
+    /// `undefined` or `null` for no manifest. Throws an `Error` with message
+    /// `CODE: REASON` for a hash of the wrong length (962) or a key that is
+    /// not a chunk key (206).
+    #[wasm_bindgen]
+    pub fn section_address(
+        module: &[u8],
+        manifest: Option<Vec<u8>>,
+        origin_utc_ms: i64,
+        span_seconds: u64,
+        span_index: u64,
+        key: &str,
+    ) -> Result<String, JsError> {
+        let hash = |what: &str, b: &[u8]| -> Result<[u8; 32], JsError> {
+            b.try_into().map_err(|_| {
+                js(ValidationError::new(
+                    crate::error::codes::ADDRESS_POINTER_NULL,
+                    format!("{what}: {} bytes, a SHA-256 is 32", b.len()),
+                ))
+            })
+        };
+        let module = hash("module", module)?;
+        let manifest = manifest.map(|m| hash("manifest", &m)).transpose()?;
+        let a = super::section_address_ffi(
+            Some(&module),
+            manifest.as_ref(),
+            origin_utc_ms,
+            span_seconds,
+            span_index,
+            Some(key.as_bytes()),
+        )
+        .map_err(js)?;
+        Ok(crate::address::to_hex(&a))
+    }
+
+    /// Validates a source manifest. Throws an `Error` with message
+    /// `CODE: REASON` on failure.
+    #[wasm_bindgen]
+    pub fn manifest_validate(bytes: &[u8]) -> Result<(), JsError> {
+        crate::manifest::validate(bytes).map_err(js)
+    }
+
+    /// Seconds of Barycentric Dynamical Time since J2000 at a UTC instant in
+    /// Unix-style milliseconds.
+    #[wasm_bindgen]
+    pub fn utc_ms_to_tdb_seconds(utc_ms: i64) -> f64 {
+        crate::timescale::utc_ms_to_tdb_seconds(utc_ms)
+    }
+
+    /// The UTC instant in Unix-style milliseconds of a TDB time in seconds
+    /// since J2000.
+    #[wasm_bindgen]
+    pub fn tdb_seconds_to_utc_ms(tdb: f64) -> i64 {
+        crate::timescale::tdb_seconds_to_utc_ms(tdb)
+    }
+
     /// Total mass in kilograms of every matter section in a hub container
     /// stored under a cell key. Throws an `Error` with message
     /// `CODE: REASON` on failure.
@@ -236,7 +448,7 @@ mod wasm {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub use wasm::{decode_chunk_mass, format_version};
+pub use wasm::{decode_chunk_mass, format_version, manifest_validate, section_address};
 
 #[cfg(test)]
 mod tests {
@@ -259,7 +471,7 @@ mod tests {
     }
 
     fn registry_bytes() -> Vec<u8> {
-        registry::encode(&registry::Registry::empty(units::Seconds::new(1.0)).unwrap())
+        registry::encode(&registry::Registry::empty())
     }
 
     fn reason(buf: &[u8]) -> &str {
@@ -358,6 +570,86 @@ mod tests {
                 assert!(got.len() + c.len_utf8() > cap - 1, "cap {cap}");
             }
         }
+    }
+
+    #[test]
+    fn section_address_abi() {
+        let m = [3u8; 32];
+        let f = [4u8; 32];
+        let k = b"9-2-1-3-0";
+        let mut out = [0u8; 32];
+        let rc = unsafe {
+            gx_section_address(
+                m.as_ptr(),
+                f.as_ptr(),
+                -7,
+                60,
+                2,
+                k.as_ptr(),
+                k.len(),
+                out.as_mut_ptr(),
+            )
+        };
+        assert_eq!(rc, 0);
+        let key: key::ChunkKey = "9-2-1-3-0".parse().unwrap();
+        assert_eq!(out, address::section_address(&m, Some(&f), -7, 60, 2, &key));
+        let rc = unsafe {
+            gx_section_address(
+                m.as_ptr(),
+                ptr::null(),
+                0,
+                0,
+                0,
+                b"registry".as_ptr(),
+                8,
+                out.as_mut_ptr(),
+            )
+        };
+        assert_eq!(rc, 0);
+        assert_eq!(
+            out,
+            address::section_address(&m, None, 0, 0, 0, &key::ChunkKey::Registry)
+        );
+
+        let mut untouched = [0xeeu8; 32];
+        let call = |module: *const u8, key: *const u8, key_len: usize, out: *mut u8| unsafe {
+            gx_section_address(module, ptr::null(), 0, 0, 0, key, key_len, out)
+        };
+        let o = untouched.as_mut_ptr();
+        assert_eq!(call(ptr::null(), k.as_ptr(), k.len(), o), 962);
+        assert_eq!(call(m.as_ptr(), k.as_ptr(), k.len(), ptr::null_mut()), 962);
+        assert_eq!(call(m.as_ptr(), ptr::null(), 3, o), 207);
+        assert_eq!(call(m.as_ptr(), ptr::null(), 0, o), 206);
+        assert_eq!(call(m.as_ptr(), b"1-0-0-0-1".as_ptr(), 9, o), 206);
+        assert_eq!(call(m.as_ptr(), b"\xff".as_ptr(), 1, o), 206);
+        assert!(untouched.iter().all(|&b| b == 0xee));
+    }
+
+    #[test]
+    fn manifest_validate_abi() {
+        let good = manifest::encode(
+            &manifest::Manifest::new(vec![manifest::Entry {
+                id: 1,
+                sha256: [9; 32],
+                length: 5,
+            }])
+            .unwrap(),
+        );
+        let mut buf = [0xffu8; 64];
+        let call = |b: &[u8], buf: &mut [u8]| unsafe {
+            gx_manifest_validate(b.as_ptr(), b.len(), buf.as_mut_ptr().cast(), buf.len())
+        };
+        assert_eq!(call(&good, &mut buf), 0);
+        assert!(buf.iter().all(|&b| b == 0xff));
+        assert_eq!(call(&good[..5], &mut buf), 901);
+        assert_eq!(
+            reason(&buf),
+            manifest::validate(&good[..5]).unwrap_err().reason
+        );
+        let rc = unsafe { gx_manifest_validate(ptr::null(), 4, buf.as_mut_ptr().cast(), 64) };
+        assert_eq!(rc, 106);
+        let rc = unsafe { gx_manifest_validate(ptr::null(), 0, ptr::null_mut(), 0) };
+        assert_eq!(rc, 901);
     }
 
     #[test]

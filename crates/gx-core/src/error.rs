@@ -3,7 +3,7 @@
 //! Every rule in `matter-format.md` section 4 (validation), and the field
 //! rules of sections 3.2 (header), 3.3 (sample block), and 3.4 (empty
 //! section) it refers to, has its own numeric code. So does every rule of
-//! section 5 (frame registry), both the rules one registry can be checked
+//! section 5 (frame registry, format version 2), both the rules one registry can be checked
 //! against and the rules across the union of a build's registries. A failing check reports
 //! exactly one [`ValidationError`]: the code of the first rule that failed and
 //! a human-readable reason naming the offending field.
@@ -21,6 +21,9 @@
 //! | 650 to 699 | frame registry, union of registries (section 5.2) |
 //! | 700 to 799 | hub container (section 6) |
 //! | 800 to 899 | compositing (section 3.5) |
+//! | 900 to 929 | source manifest (`client-compute.md` section 5.1) |
+//! | 930 to 959 | module request, tile, and source id bytes (`client-compute.md` section 4) |
+//! | 960 to 979 | section addresses and span indices (`client-compute.md` sections 2.4 and 3) |
 //!
 //! The full table with the check order lives in `docs/errors.md`. A code
 //! never changes meaning once published. New rules get new codes.
@@ -203,7 +206,8 @@ pub mod codes {
         REGISTRY_HEADER_TOO_SHORT = 601;
         /// The registry magic is not `0x33 0x47 0x52 0x47`.
         REGISTRY_BAD_MAGIC = 602;
-        /// Registry `format_version` is not 1.
+        /// Registry `format_version` is neither 2, the version this library
+        /// implements, nor the retired version 1 (which has its own code, 610).
         REGISTRY_UNSUPPORTED_VERSION = 603;
         /// The reserved `u16` at header offset 6 is not 0.
         REGISTRY_RESERVED_U16_NONZERO = 604;
@@ -211,11 +215,17 @@ pub mod codes {
         REGISTRY_RESERVED_U32_NONZERO = 605;
         /// `epoch` is NaN or infinite.
         REGISTRY_EPOCH_NOT_FINITE = 606;
-        /// The input length is not exactly `24 + 144 * frame_count`.
+        /// The input length is not exactly `24 + 184 * frame_count`.
         REGISTRY_LENGTH_MISMATCH = 607;
         /// More frames than a `u32` `frame_count` can hold were given to the Rust
         /// constructor. Reachable only through the Rust API.
         REGISTRY_TOO_MANY_FRAMES = 608;
+        /// A registry with `frame_count` 0 has an `epoch` other than 0
+        /// (section 5.3).
+        REGISTRY_EMPTY_EPOCH_NONZERO = 609;
+        /// Registry `format_version` is 1, retired with format version 2
+        /// (section 9): its 144-byte records are no longer read.
+        REGISTRY_VERSION_RETIRED = 610;
         /// A record's 7 reserved bytes at offset 25 are not all 0.
         FRAME_RESERVED_NONZERO = 611;
         /// A record's `frame_id` is lower than the previous record's: records are
@@ -247,11 +257,29 @@ pub mod codes {
         ROOT_POSITION_NONZERO = 624;
         /// A root frame has a `velocity` other than 0.
         ROOT_VELOCITY_NONZERO = 625;
+        /// `j2` is NaN or infinite.
+        FRAME_J2_NOT_FINITE = 626;
+        /// `j2` is negative.
+        FRAME_J2_NEGATIVE = 627;
+        /// `reference_radius` is NaN or infinite.
+        FRAME_REFERENCE_RADIUS_NOT_FINITE = 628;
+        /// `j2` is above 0 and `reference_radius` is zero or negative.
+        FRAME_REFERENCE_RADIUS_NOT_POSITIVE = 629;
+        /// `j2` is 0 and `reference_radius` is not 0.
+        FRAME_REFERENCE_RADIUS_NONZERO = 630;
+        /// A component of `principal_moments` is NaN or infinite.
+        FRAME_MOMENTS_NOT_FINITE = 631;
+        /// `principal_moments` are neither all 0 nor all greater than 0.
+        FRAME_MOMENTS_NOT_POSITIVE = 632;
+        /// One of the `principal_moments` is greater than the sum of the other
+        /// two.
+        FRAME_MOMENTS_TRIANGLE = 633;
 
         // 650 to 699: the union of a build's registries (section 5.2). Not byte
         // rules of one registry.
 
-        /// Two registries in the union have different `epoch` bit patterns.
+        /// Two registries in the union that declare frames have different
+        /// `epoch` bit patterns.
         UNION_EPOCH_MISMATCH = 651;
         /// A `frame_id` is declared by more than one registry in the union.
         UNION_DUPLICATE_ID = 652;
@@ -309,6 +337,70 @@ pub mod codes {
         COMPOSITE_ORIGIN_MISMATCH = 803;
         /// Sections given to `composite` have different edges.
         COMPOSITE_EDGE_MISMATCH = 804;
+
+        // 900 to 929: source manifest (`client-compute.md` section 5.1).
+        // Checked by `manifest::decode`.
+
+        /// Fewer than 12 bytes, so there is no complete manifest header.
+        MANIFEST_HEADER_TOO_SHORT = 901;
+        /// The manifest magic is not `3GXM` (`0x33 0x47 0x58 0x4D`).
+        MANIFEST_BAD_MAGIC = 902;
+        /// Manifest `version` is not 1.
+        MANIFEST_UNSUPPORTED_VERSION = 903;
+        /// The reserved `u16` at manifest offset 6 is not 0.
+        MANIFEST_RESERVED_NONZERO = 904;
+        /// The input length is not exactly `12 + 48 * entry_count`.
+        MANIFEST_LENGTH_MISMATCH = 905;
+        /// An entry's `id` is lower than the previous entry's: entries are not
+        /// sorted ascending.
+        MANIFEST_NOT_SORTED = 906;
+        /// Two entries have the same `id`.
+        MANIFEST_DUPLICATE_ID = 907;
+        /// More entries than a `u32` `entry_count` can hold were given to the
+        /// Rust constructor. Reachable only through the Rust API.
+        MANIFEST_TOO_MANY_ENTRIES = 908;
+
+        // 930 to 959: module request bytes, tile bytes, and the source id
+        // list (`client-compute.md` section 4). Checked by `module_io`.
+
+        /// Fewer than 36 bytes, so there is no complete request header.
+        REQUEST_TOO_SHORT = 931;
+        /// The request magic is not `3GXQ` (`0x33 0x47 0x58 0x51`).
+        REQUEST_BAD_MAGIC = 932;
+        /// Request `version` is not 1.
+        REQUEST_UNSUPPORTED_VERSION = 933;
+        /// The reserved `u16` at request offset 6 is not 0.
+        REQUEST_RESERVED_NONZERO = 934;
+        /// The input length is not exactly `36 + key_len`.
+        REQUEST_LENGTH_MISMATCH = 935;
+        /// The request's chunk key is not UTF-8 or not a chunk key.
+        REQUEST_KEY_MALFORMED = 936;
+        /// Fewer than 4 bytes, so there is no complete tile `count`.
+        TILES_TOO_SHORT = 941;
+        /// A tile's `id`, `length`, or bytes run past the end of the input.
+        TILES_TRUNCATED = 942;
+        /// Bytes follow the last tile.
+        TILES_TRAILING_BYTES = 943;
+        /// A tile's `id` is not greater than the previous tile's: tiles are
+        /// not in the ascending, unique order `gx_sources` returns.
+        TILES_NOT_ASCENDING = 944;
+        /// More tiles than a `u32` counts, or a tile longer than a `u32`
+        /// length holds, were given to the encoder. Reachable only through the
+        /// Rust API.
+        TILES_TOO_LARGE = 945;
+        /// A source id list's length is not a multiple of 8.
+        SOURCES_LENGTH_NOT_MULTIPLE = 951;
+        /// A source id is not greater than the previous one: the list is not
+        /// ascending and unique.
+        SOURCES_NOT_ASCENDING = 952;
+
+        // 960 to 979: section addresses and span indices
+        // (`client-compute.md` sections 2.4 and 3).
+
+        /// A span index was asked for a time before the space's origin.
+        SPAN_TIME_BEFORE_ORIGIN = 961;
+        /// The C ABI was given a null `module32` or `out32` pointer.
+        ADDRESS_POINTER_NULL = 962;
     }
 }
 

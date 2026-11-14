@@ -1,13 +1,17 @@
-//! Regenerates the matter section, frame registry, and hub container
+//! Regenerates the matter section, frame registry, hub container, section
+//! address, source manifest, module request and tile, and time scale
 //! conformance vectors.
 //!
 //! Usage: `conformance-gen OUT_DIR`. Writes `OUT_DIR/matter/valid/`,
 //! `OUT_DIR/matter/invalid/`, `OUT_DIR/registry/` (see the [`registry`]
-//! module), and `OUT_DIR/container/` (see the [`container`] module), the
-//! files checked in under `conformance/matter/`, `conformance/registry/`,
-//! and `conformance/container/` (`matter-format.md` section 8). Run it with
-//! `conformance` as `OUT_DIR` after removing those three directories to
-//! refresh the checked-in vectors, or into a
+//! module), `OUT_DIR/container/` (see the [`container`] module),
+//! `OUT_DIR/address/` ([`address`]), `OUT_DIR/manifest/` ([`manifest`]),
+//! `OUT_DIR/module-io/` ([`module_io`]), and `OUT_DIR/timescale/`
+//! ([`timescale`]), the files checked in under the same names in
+//! `conformance/` (`matter-format.md` section 8, `client-compute.md`
+//! sections 3 to 5, `space-model.md` section 7). Run it with `conformance` as
+//! `OUT_DIR` after removing those directories to refresh the checked-in
+//! vectors, or into a
 //! scratch directory and `diff -r` to prove the checked-in files are what the
 //! code produces.
 //!
@@ -33,8 +37,12 @@ use gx_core::matter::{self, Compression, Sample, Samples, Section, State, HEADER
 use gx_core::units::{Attenuation, Density, Kelvin, Meters, Ratio};
 use serde_json::{json, Value};
 
+mod address;
 mod container;
+mod manifest;
+mod module_io;
 mod registry;
+mod timescale;
 
 /// SplitMix64: a small, fixed, portable pseudo-random sequence.
 struct SplitMix64(u64);
@@ -773,6 +781,10 @@ fn generate() -> Vec<File> {
     files.extend(invalid());
     files.extend(registry::files());
     files.extend(container::files());
+    files.extend(address::files());
+    files.extend(manifest::files());
+    files.extend(module_io::files());
+    files.extend(timescale::files());
     files.sort_by(|a, b| a.0.cmp(&b.0));
     files
 }

@@ -1,8 +1,9 @@
 //! Deterministic elementary functions for the laws.
 //!
-//! The platform `exp` and `tan` come from the system math library, whose
+//! The platform `exp`, `sin`, and `tan` come from the system math library, whose
 //! last bit differs between platforms. The laws in [`crate::radiance`],
-//! [`crate::extinction`], and [`crate::lod`] need those functions and are held
+//! [`crate::extinction`], and [`crate::lod`], and the time scale conversion
+//! in [`crate::timescale`], need those functions and are held
 //! to the determinism rule of `docs/determinism.md`, so this module writes
 //! them out with `+`, `-`, `*`, `/`, `round`, and exact power of two scaling
 //! only. Every operation used is correctly rounded in IEEE 754, so the result
@@ -86,6 +87,29 @@ pub(crate) fn tan(x: f64) -> f64 {
     x * sin / cos
 }
 
+/// `sin(x)` for any finite `x`.
+///
+/// Reduces `x` by a whole number of turns, `x - k 2 pi` with `k` rounded
+/// from `x / 2 pi`, then sums the Taylor series to the `x^29` term in Horner
+/// form. The reduction subtracts a rounded `2 pi`, so the absolute error
+/// grows with `|x|` (about `|x| * 2.4e-16`); the time scale term this serves
+/// keeps `|x|` below about 700. Returns NaN for NaN and infinities.
+pub(crate) fn sin(x: f64) -> f64 {
+    if !x.is_finite() {
+        return f64::NAN;
+    }
+    let turn = 2.0 * core::f64::consts::PI;
+    let k = (x / turn).round();
+    let r = x - k * turn;
+    let r2 = r * r;
+    let mut acc = 1.0;
+    for n in (1..=14u32).rev() {
+        let n = f64::from(n);
+        acc = 1.0 - r2 / ((2.0 * n) * (2.0 * n + 1.0)) * acc;
+    }
+    r * acc
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,6 +140,18 @@ mod tests {
             assert!(close(expm1(x), f64::exp_m1(x), 4e-15), "expm1({x})");
         }
         assert_eq!(expm1(0.0), 0.0);
+    }
+
+    #[test]
+    fn sin_matches_std() {
+        let mut x = -700.0;
+        while x < 700.0 {
+            assert!((sin(x) - x.sin()).abs() < 1e-13, "sin({x})");
+            x += 0.0731;
+        }
+        assert_eq!(sin(0.0), 0.0);
+        assert!(sin(f64::NAN).is_nan());
+        assert!(sin(f64::INFINITY).is_nan());
     }
 
     #[test]

@@ -1,0 +1,13 @@
+{
+  "vectors": {
+    "901-header-too-short.bin": 901,
+    "902-bad-magic.bin": 902,
+    "903-unsupported-version.bin": 903,
+    "904-reserved-nonzero.bin": 904,
+    "905-count-high.bin": 905,
+    "905-length-long.bin": 905,
+    "905-length-short.bin": 905,
+    "906-not-sorted.bin": 906,
+    "907-duplicate-id.bin": 907
+  }
+}

@@ -1,0 +1,101 @@
+// Runs the WebAssembly build under Node (V8, standing in for the browser)
+// against the conformance vectors the native build is tested with, so the two
+// must agree byte for byte: section addresses, UTC to TDB bit patterns and
+// back, source manifest validation, and registry format version 2
+// validation.
+//
+// Usage: node scripts/wasm-node-check.mjs [PKG_DIR]
+// PKG_DIR defaults to target/wasm-pkg, the output of the wasm-pack step in
+// scripts/ci.sh. Exits 0 when every check passes.
+
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const root = new URL("..", import.meta.url).pathname;
+const pkg = process.argv[2] ?? join(root, "target/wasm-pkg");
+const gx = await import(pathToFileURL(join(pkg, "gx_core.js")).href);
+gx.initSync({ module: readFileSync(join(pkg, "gx_core_bg.wasm")) });
+
+const conformance = join(root, "conformance");
+const json = (rel) => JSON.parse(readFileSync(join(conformance, rel), "utf8"));
+const bin = (rel) => new Uint8Array(readFileSync(join(conformance, rel)));
+const hex = (s) => Uint8Array.from(s.match(/../g).map((b) => parseInt(b, 16)));
+
+let failures = 0;
+let checks = 0;
+function check(ok, what) {
+  checks++;
+  if (!ok) {
+    failures++;
+    console.log(`FAIL: ${what}`);
+  }
+}
+
+// Returns the numeric code an export threw with, or 0 if it did not throw.
+function code(f) {
+  try {
+    f();
+    return 0;
+  } catch (e) {
+    return Number(String(e.message).split(":")[0]);
+  }
+}
+
+function f64Bits(x) {
+  const view = new DataView(new ArrayBuffer(8));
+  view.setFloat64(0, x, true);
+  return "0x" + view.getBigUint64(0, true).toString(16).padStart(16, "0");
+}
+
+for (const c of json("address/cases.json").cases) {
+  const got = gx.section_address(
+    hex(c.module),
+    c.manifest === null ? undefined : hex(c.manifest),
+    BigInt(c.origin_utc_ms),
+    BigInt(c.span_seconds),
+    BigInt(c.span_index),
+    c.key,
+  );
+  check(got === c.address, `address ${c.name}: ${got}`);
+}
+check(code(() => gx.section_address(new Uint8Array(31), undefined, 0n, 0n, 0n, "registry")) === 962,
+  "short module hash throws 962");
+check(code(() => gx.section_address(new Uint8Array(32), undefined, 0n, 0n, 0n, "1-0-0-0-1")) === 206,
+  "malformed key throws 206");
+
+for (const c of json("timescale/cases.json").cases) {
+  const tdb = gx.utc_ms_to_tdb_seconds(BigInt(c.utc_ms));
+  check(f64Bits(tdb) === c.tdb_seconds.bits, `utc_ms_to_tdb_seconds ${c.name}: ${f64Bits(tdb)}`);
+  const back = gx.tdb_seconds_to_utc_ms(tdb);
+  check(back === BigInt(c.back_utc_ms), `tdb_seconds_to_utc_ms ${c.name}: ${back}`);
+}
+for (const c of json("timescale/inverse.json").cases) {
+  const view = new DataView(new ArrayBuffer(8));
+  view.setBigUint64(0, BigInt(c.tdb_seconds.bits), true);
+  const back = gx.tdb_seconds_to_utc_ms(view.getFloat64(0, true));
+  check(back === BigInt(c.utc_ms), `inverse inside the leap second: ${back}`);
+}
+
+for (const name of ["empty", "one", "three"]) {
+  check(code(() => gx.manifest_validate(bin(`manifest/valid/${name}.bin`))) === 0, `manifest ${name}`);
+}
+for (const [file, want] of Object.entries(json("manifest/invalid/index.json").vectors)) {
+  const got = code(() => gx.manifest_validate(bin(`manifest/invalid/${file}`)));
+  check(got === want, `manifest ${file}: ${got}`);
+}
+
+for (const name of ["empty", "single-root", "tree"]) {
+  check(code(() => gx.validate("registry", bin(`registry/valid/${name}.bin`))) === 0, `registry ${name}`);
+}
+for (const [file, want] of Object.entries(json("registry/invalid/index.json").vectors)) {
+  const got = code(() => gx.validate("registry", bin(`registry/invalid/${file}`)));
+  check(got === want, `registry ${file}: ${got}`);
+}
+check(readdirSync(join(conformance, "registry/invalid")).length > 40, "registry vectors present");
+
+if (failures !== 0) {
+  console.log(`wasm-node-check: ${failures} of ${checks} failed`);
+  process.exit(1);
+}
+console.log(`wasm-node-check ok (${checks} checks)`);

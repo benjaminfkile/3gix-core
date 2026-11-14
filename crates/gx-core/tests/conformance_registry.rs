@@ -105,6 +105,19 @@ fn valid_vectors_decode_and_match() {
                 &w["angular_velocity"],
                 f.angular_velocity,
             );
+            check(name, "j2", &w["j2"], f.j2);
+            check(
+                name,
+                "reference_radius",
+                &w["reference_radius"],
+                f.reference_radius.value(),
+            );
+            check_vec(
+                name,
+                "principal_moments",
+                &w["principal_moments"],
+                f.principal_moments,
+            );
         }
     }
 
@@ -121,9 +134,24 @@ fn valid_vectors_decode_and_match() {
         1
     );
     assert!(r.frames().iter().all(|f| f.orientation.w != 1.0));
+    // Format version 2: some frames declare an oblateness and moments, and
+    // some declare neither.
+    assert_eq!(u16::from_le_bytes([r_bytes()[4], r_bytes()[5]]), 2);
+    assert!(r
+        .frames()
+        .iter()
+        .any(|f| f.j2 > 0.0 && f.principal_moments.x > 0.0));
+    assert!(r
+        .frames()
+        .iter()
+        .any(|f| f.j2 == 0.0 && f.principal_moments.x == 0.0));
 }
 
-/// Codes the bytes of one registry can trigger: 601 to 625 except 608, which
+fn r_bytes() -> Vec<u8> {
+    std::fs::read(root().join("valid/tree.bin")).unwrap()
+}
+
+/// Codes the bytes of one registry can trigger: 601 to 633 except 608, which
 /// only the Rust constructor reaches.
 const BYTE_CODES: &[u16] = &[
     codes::REGISTRY_HEADER_TOO_SHORT,
@@ -133,6 +161,8 @@ const BYTE_CODES: &[u16] = &[
     codes::REGISTRY_RESERVED_U32_NONZERO,
     codes::REGISTRY_EPOCH_NOT_FINITE,
     codes::REGISTRY_LENGTH_MISMATCH,
+    codes::REGISTRY_EMPTY_EPOCH_NONZERO,
+    codes::REGISTRY_VERSION_RETIRED,
     codes::FRAME_RESERVED_NONZERO,
     codes::FRAME_NOT_SORTED,
     codes::FRAME_DUPLICATE_ID,
@@ -148,6 +178,14 @@ const BYTE_CODES: &[u16] = &[
     codes::FRAME_ANGULAR_VELOCITY_NOT_FINITE,
     codes::ROOT_POSITION_NONZERO,
     codes::ROOT_VELOCITY_NONZERO,
+    codes::FRAME_J2_NOT_FINITE,
+    codes::FRAME_J2_NEGATIVE,
+    codes::FRAME_REFERENCE_RADIUS_NOT_FINITE,
+    codes::FRAME_REFERENCE_RADIUS_NOT_POSITIVE,
+    codes::FRAME_REFERENCE_RADIUS_NONZERO,
+    codes::FRAME_MOMENTS_NOT_FINITE,
+    codes::FRAME_MOMENTS_NOT_POSITIVE,
+    codes::FRAME_MOMENTS_TRIANGLE,
 ];
 
 #[test]
