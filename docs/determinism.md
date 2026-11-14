@@ -45,18 +45,20 @@ Decoding is not affected: any conforming zstd decoder reads any conforming frame
 
 ## The proof
 
-`tools/conformance-gen` regenerates `conformance/matter/`, `conformance/registry/`, `conformance/container/`, `conformance/address/`, `conformance/manifest/`, `conformance/module-io/`, and `conformance/timescale/` from code with fixed values and a fixed-seed generator written in the tool. Two checks run it:
+`tools/conformance-gen` regenerates `conformance/matter/`, `conformance/registry/`, `conformance/container/`, `conformance/address/`, `conformance/manifest/`, `conformance/module-io/`, `conformance/timescale/`, and `conformance/integrate/` from code with fixed values and a fixed-seed generator written in the tool. Two checks run it:
 
 - `cargo test -p conformance-gen` runs the generator into a scratch directory and compares every file to the checked-in copy byte for byte.
 - `scripts/ci.sh` runs it into `target/conformance-check` and fails on any `diff -r` difference against those directories.
 
-To refresh the vectors after an intended change: `rm -rf conformance/matter conformance/registry conformance/container conformance/address conformance/manifest conformance/module-io conformance/timescale && cargo run -p conformance-gen -- conformance`.
+To refresh the vectors after an intended change: `rm -rf conformance/matter conformance/registry conformance/container conformance/address conformance/manifest conformance/module-io conformance/timescale conformance/integrate && cargo run -p conformance-gen -- conformance`.
 
 ## How the laws keep the promise
 
-The laws (`frames`, `gravity`, `integrate`, `radiance`, `emission`, `extinction`, `lod`) produce no hub bytes, but they are held to the same rule so that a renderer and a conformance check agree bit for bit on where every frame is at a given time.
+The laws (`frames`, `gravity`, `rotation`, `integrate`, `history`, `radiance`, `emission`, `extinction`, `lod`) produce no hub bytes, but they are held to the same rule so that a renderer and a conformance check agree bit for bit on where every frame is at a given time.
 
 - Frames are always visited by ascending `frame_id`, and gravity sources are summed in that order. No hash map is iterated.
-- Only `+`, `-`, `*`, `/`, and `sqrt` are used, all correctly rounded in IEEE 754. No platform `sin`, `cos`, or `cbrt`: the Yoshida coefficients come from a written-out cube root of 2, and orientations advance by `normalize(q + 0.5 * dt * q * (0, w))` with no trigonometry.
+- Only `+`, `-`, `*`, `/`, and `sqrt` are used, all correctly rounded in IEEE 754, plus the written-out `sin` and `cos` of `detmath`. No platform `sin`, `cos`, or `cbrt`: the Yoshida coefficients come from a written-out cube root of 2, and orientations advance by exact rotation quaternions `(sin(a/2) n, cos(a/2))` built with `detmath`, renormalized every step.
+- The velocity-dependent kick of the default scheme iterates until an iterate repeats bit for bit or a fixed iteration cap; both stopping rules depend only on the values, so every platform stops at the same iteration.
+- `conformance/integrate/` pins the state bytes of a six-frame registry (relativistic terms, oblateness, two rigid frames) after three integrations, and `scripts/wasm-node-check.mjs` checks that the WebAssembly build under Node produces the same bytes.
 - `advance` splits an interval into `ceil(|interval| / max_step)` equal steps and sets the time to exactly the target at the end.
 - `radiance`, `extinction`, and `lod` need `exp` and `tan`, and `timescale` needs `sin`. These are written out in `detmath` from correctly rounded operations, never taken from the platform math library. `band_radiance` uses a fixed 64-point midpoint rule per band. See `laws.md`.

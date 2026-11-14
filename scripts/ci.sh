@@ -38,6 +38,7 @@ diff -r target/conformance-check/address conformance/address
 diff -r target/conformance-check/manifest conformance/manifest
 diff -r target/conformance-check/module-io conformance/module-io
 diff -r target/conformance-check/timescale conformance/timescale
+diff -r target/conformance-check/integrate conformance/integrate
 
 step "5. cargo build wasm32"
 cargo build -p gx-core --release --target wasm32-unknown-unknown
@@ -47,7 +48,7 @@ wasm-pack build crates/gx-core --release --target web --out-dir ../../target/was
 
 step "6b. wasm exports in the generated TypeScript declarations"
 for f in format_version validate decode_chunk_mass section_address manifest_validate \
-    utc_ms_to_tdb_seconds tdb_seconds_to_utc_ms; do
+    utc_ms_to_tdb_seconds tdb_seconds_to_utc_ms integrate_registry; do
     grep -q "export function $f(" target/wasm-pkg/gx_core.d.ts || {
         echo "missing wasm export: $f" >&2
         exit 1

@@ -1,0 +1,41 @@
+{
+  "cases": [
+    {
+      "max_step_seconds": {
+        "bits": "0x4082c00000000000",
+        "decimal": "6e2"
+      },
+      "name": "one-day",
+      "state": "one-day.bin",
+      "to_seconds": {
+        "bits": "0x41c8247800000000",
+        "decimal": "8.100864e8"
+      }
+    },
+    {
+      "max_step_seconds": {
+        "bits": "0x40ac200000000000",
+        "decimal": "3.6e3"
+      },
+      "name": "thirty-days",
+      "state": "thirty-days.bin",
+      "to_seconds": {
+        "bits": "0x41c83795c0000000",
+        "decimal": "8.12592e8"
+      }
+    },
+    {
+      "max_step_seconds": {
+        "bits": "0x408c200000000000",
+        "decimal": "9e2"
+      },
+      "name": "back-half-day",
+      "state": "back-half-day.bin",
+      "to_seconds": {
+        "bits": "0x41c8237ae0000000",
+        "decimal": "8.099568e8"
+      }
+    }
+  ],
+  "registry": "registry.bin"
+}

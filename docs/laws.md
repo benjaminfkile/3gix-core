@@ -19,6 +19,7 @@ The three albedo values of a sample map to these bands in this order. Every per-
 | Constant | Value | Unit | Source |
 |---|---|---|---|
 | `gravity::G` | 6.67430e-11 | m^3 kg^-1 s^-2 | CODATA 2018 |
+| `gravity::C` | 299792458 | m/s | exact |
 | `radiance::PLANCK` | 6.62607015e-34 | J s | CODATA 2018, exact |
 | `radiance::SPEED_OF_LIGHT` | 299792458 | m/s | CODATA 2018, exact |
 | `radiance::BOLTZMANN` | 1.380649e-23 | J/K | CODATA 2018, exact |
@@ -31,7 +32,15 @@ The three albedo values of a sample map to these bands in this order. Every per-
 | `gravity::acceleration_at` | point (m), point masses (m, kg) | m/s^2 | sum in slice order |
 | `gravity::potential_at` | point (m), point masses (m, kg) | J/kg | sum in slice order |
 | `gravity::acceleration_from_section` | point (m), section | m/s^2 | sum in sample index order |
+| `gravity::newtonian_accelerations` | bodies (m, m/s, kg) | m/s^2 per body | sums by ascending `frame_id` |
+| `gravity::relativistic_corrections` | bodies | m/s^2 per body | first post-Newtonian terms only, sums by ascending `frame_id` |
+| `gravity::oblateness_accelerations` | bodies with `j2`, radius (m), axis | m/s^2 per body | J2 force and reaction, sums by ascending `frame_id` |
+| `gravity::accelerations` | bodies | m/s^2 per body | Newtonian plus relativistic plus oblateness |
+| `rotation::torque` | moments (kg m^2), orientation, position (m), point masses | N m in frame axes | MacCullagh's formula, sum in slice order |
+| `rotation::free_rotation` | orientation, angular momentum (kg m^2/s), moments, time (s) | orientation, angular momentum | splitting into fixed-axis rotations, exact for a symmetric frame |
+| `integrate::step` | frame system, step (s), scheme | frame states | see `integrate` module docs |
 | `integrate::advance` | frame system, target time (s) | frame states | fixed step count, see `determinism.md` |
+| `history::History::state_at` | time (s) | frame system | nearest checkpoint at or before, then `advance` |
 | `radiance::spectral_radiance` | wavelength (m), temperature (K) | W m^-2 sr^-1 m^-1 | written-out exponential |
 | `radiance::band_radiance` | temperature (K) | W m^-2 sr^-1 per band | 64-point midpoint rule per band, ascending wavelength |
 | `radiance::total_radiance` | temperature (K) | W m^-2 sr^-1 | closed form `sigma T^4 / pi` |
@@ -41,6 +50,12 @@ The three albedo values of a sample map to these bands in this order. Every per-
 | `extinction::transmittance` | density, attenuation, path (m) | ratio | written-out exponential |
 | `extinction::optical_depth_along` | section, segment ends (m), steps | dimensionless | caller-fixed steps, summed in order |
 | `lod::select_cells` | frame, camera (m), selection params | cell keys | fixed refinement order, sorted output |
+
+### Gravity and rotation
+
+`integrate::Scheme::Relativistic` is the default. It integrates the Newtonian point-mass part with the fourth order Yoshida scheme and adds the first post-Newtonian (Einstein-Infeld-Hoffmann, `beta = gamma = 1`) corrections, the J2 force of every oblate frame, and the torques on every frame with principal moments as half-step perturbation kicks around it, the velocity-dependent kick solved by the implicit midpoint rule. The global error is `O(h^4) + O(eps h^2)` with `eps` the size of the perturbation relative to Newtonian gravity. `Scheme::Oblate` drops the relativistic terms, and `Scheme::Yoshida4` and `Scheme::VelocityVerlet` are point-mass Newtonian only. The equations and their sources are in the `gravity`, `rotation`, and `integrate` module docs.
+
+A frame's `angular_velocity` is relative to inertial axes, in the frame's own axes. The integrator advances every frame's orientation relative to root axes and stores it relative to its parent's new axes, so a frame never inherits its parent's spin.
 
 ### Radiance
 
@@ -65,5 +80,5 @@ The three albedo values of a sample map to these bands in this order. Every per-
 ## How the determinism is kept
 
 - Only `+`, `-`, `*`, `/`, `sqrt`, `round`, and `floor`-like truncation, all exact or correctly rounded in IEEE 754.
-- `exp`, `expm1`, and `tan` are written out in a private module (`detmath`): range reduction by an exactly split `ln 2`, a fixed-length Taylor series in Horner form, and scaling by an exact power of two. The platform math library is never called by a law.
+- `exp`, `expm1`, `sin`, `cos`, and `tan` are written out in a private module (`detmath`): range reduction by an exactly split `ln 2`, a fixed-length Taylor series in Horner form, and scaling by an exact power of two. The platform math library is never called by a law.
 - Every sum runs in a fixed order with plain operators: no fused multiply add, no SIMD reductions, no hash map iteration.
