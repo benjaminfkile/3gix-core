@@ -167,6 +167,26 @@ impl History {
         s
     }
 
+    /// The system at time `t` from the checkpoints already held, without
+    /// adding any: the nearest checkpoint at or before `t`, integrated
+    /// forward to `t` (backwards from the epoch checkpoint for a time before
+    /// the epoch). Gives the same result as [`History::state_at`] for any
+    /// `t` at or before [`History::latest`] plus one interval; beyond that
+    /// it integrates from the last checkpoint, which costs more but is
+    /// still a pure function of the history and `t`. This is what the
+    /// light-time solution of [`crate::light`] reads through a shared
+    /// reference.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `t` is not finite.
+    pub fn peek(&self, t: Seconds) -> FrameSystem {
+        assert!(t.value().is_finite(), "time {} is not finite", t.value());
+        let mut s = self.checkpoints[self.index_at_or_before(t)].clone();
+        advance(&mut s, t, self.max_step, self.scheme);
+        s
+    }
+
     /// The time of checkpoint `k`.
     fn checkpoint_time(&self, k: usize) -> Seconds {
         Seconds::new(self.epoch.value() + k as f64 * self.interval.value())
@@ -277,6 +297,11 @@ mod tests {
         );
         let at = h.state_at(Seconds::new(2100.0));
         assert_eq!(at, h.checkpoints()[2]);
+        assert_eq!(h.peek(Seconds::new(2100.0)), at);
+        assert_eq!(
+            h.peek(Seconds::new(2600.0)),
+            h.state_at(Seconds::new(2600.0))
+        );
         let before = h.state_at(Seconds::new(50.0));
         assert_eq!(before.time(), Seconds::new(50.0));
         assert!(!h.is_empty());
