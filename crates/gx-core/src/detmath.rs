@@ -50,7 +50,7 @@ fn taylor_expm1(r: f64, terms: u32) -> f64 {
 /// Reduces `x = k ln 2 + r` with `|r| <= ln 2 / 2`, sums the Taylor series of
 /// `e^r` to 16 terms, and scales by `2^k`. Returns 0 below -745.2,
 /// infinity above 709.8, and NaN for NaN.
-pub(crate) fn exp(x: f64) -> f64 {
+pub fn exp(x: f64) -> f64 {
     if x.is_nan() {
         return x;
     }
@@ -66,7 +66,7 @@ pub(crate) fn exp(x: f64) -> f64 {
 }
 
 /// `e^x - 1`, accurate near 0 where `exp(x) - 1` would cancel.
-pub(crate) fn expm1(x: f64) -> f64 {
+pub fn expm1(x: f64) -> f64 {
     if x.abs() < 0.5 {
         taylor_expm1(x, 22)
     } else {
@@ -76,7 +76,7 @@ pub(crate) fn expm1(x: f64) -> f64 {
 
 /// `tan(x)` for `|x| < pi / 2`, from the Taylor series of sine and cosine
 /// to the `x^35` and `x^34` terms.
-pub(crate) fn tan(x: f64) -> f64 {
+pub fn tan(x: f64) -> f64 {
     let x2 = x * x;
     let mut sin = 1.0;
     let mut cos = 1.0;
@@ -95,7 +95,7 @@ pub(crate) fn tan(x: f64) -> f64 {
 /// form. The reduction subtracts a rounded `2 pi`, so the absolute error
 /// grows with `|x|` (about `|x| * 2.4e-16`); the time scale term this serves
 /// keeps `|x|` below about 700. Returns NaN for NaN and infinities.
-pub(crate) fn sin(x: f64) -> f64 {
+pub fn sin(x: f64) -> f64 {
     if !x.is_finite() {
         return f64::NAN;
     }
@@ -117,7 +117,7 @@ pub(crate) fn sin(x: f64) -> f64 {
 /// Taylor series to the `x^28` term in Horner form. The absolute error grows
 /// with `|x|` in the same way (about `|x| * 2.4e-16`). Returns NaN for NaN
 /// and infinities.
-pub(crate) fn cos(x: f64) -> f64 {
+pub fn cos(x: f64) -> f64 {
     if !x.is_finite() {
         return f64::NAN;
     }

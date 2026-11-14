@@ -35,7 +35,7 @@ The architecture and the byte-level format are specified in the hub repository u
 
 Rust stable. Targets: the host triple for native builds and `wasm32-unknown-unknown` for the browser. `wasm-pack` drives WebAssembly builds. `cargo fmt --check`, `cargo clippy -- -D warnings`, and `cargo test` must pass on every change.
 
-`sh scripts/ci.sh` runs the full check locally: toolchain versions, format, clippy, tests, regeneration of the conformance vectors with a byte-for-byte diff against every directory under `conformance/`, the WebAssembly build, a check that the generated TypeScript declarations carry every export, the WebAssembly build run under Node against the native conformance vectors (`scripts/wasm-node-check.mjs`), `wasm-opt`, the headless GPU compute probe, the vocabulary lint, the native shared library build, and the C ABI check program. See `docs/toolchain.md` for the last recorded run.
+`sh scripts/ci.sh` runs the full check locally: toolchain versions, format, clippy, tests, regeneration of the conformance vectors with a byte-for-byte diff against every directory under `conformance/`, the WebAssembly build, a check that the generated TypeScript declarations carry every export, the WebAssembly build run under Node against the native conformance vectors (`scripts/wasm-node-check.mjs`), `wasm-opt`, the headless GPU compute probe, the vocabulary lint, the native shared library build, the C ABI check program, and the module determinism harness (the example module built for `wasm32-unknown-unknown` and run through `gx-module-host` natively and through Node, `scripts/module-determinism.sh`). See `docs/toolchain.md` for the last recorded run.
 
 ## Layout
 
@@ -59,7 +59,8 @@ crates/gx-core/      the core library: rlib, C ABI cdylib, and WebAssembly expor
   src/emission.rs    hot matter of a section summarized as one emitter
   src/extinction.rs  extinction coefficient, transmittance, optical depth
   src/lod.rs         octree cell selection for a camera
-  src/detmath.rs     deterministic exp, expm1, sin, and tan for the laws
+  src/detmath.rs     deterministic exp, expm1, sin, cos, and tan, public for
+                     modules too
   src/sha256.rs      SHA-256 and lowercase hex
   src/address.rs     section addresses and span indices
   src/manifest.rs    source manifests: encode, decode, validate, hash, lookup
@@ -76,6 +77,13 @@ crates/gx-core/      the core library: rlib, C ABI cdylib, and WebAssembly expor
   tests/             integration tests, including the conformance vector checks
                      the orbit tests (laws.rs), and the radiance,
                      emission, and extinction checks (radiance_laws.rs)
+crates/gx-module-guest/  what a compiler author links to become a module:
+                     gx_alloc, gx_free, gx_abi_version, gx_last_error, the
+                     Module trait, and the gx_module! macro (docs/modules.md)
+crates/gx-module-host/   the native worker's module host on wasmtime:
+                     admission checks, limits, sources and compile; also the
+                     gx-module-run harness binary
+crates/gx-module-test/   a tiny example module for tests and conformance
 conformance/         conformance vectors any implementation must pass
   keys.json          chunk key vectors
   matter/valid/      valid sections (.bin) with expected decode results (.json)
@@ -92,6 +100,8 @@ conformance/         conformance vectors any implementation must pass
   address/           section address cases and span index cases
   manifest/          valid manifests and one or more files per manifest code
   module-io/         request, tile, and source id vectors, valid and invalid
+  module/            example module cases: request bytes, tile bytes, and the
+                     expected output SHA-256, index.json lists them
   timescale/         UTC to TDB cases with bit patterns, and the inverse
                      inside a leap second
 include/gx_core.h    hand-written C header for the C ABI
@@ -100,9 +110,12 @@ tools/gpu-probe/     headless GPU compute probe (wgpu over Vulkan)
 tools/conformance-gen/  regenerates conformance/matter/,
                      conformance/registry/, and conformance/container/
                      deterministically
-scripts/             ci.sh, the vocabulary lint, and its word list
+scripts/             ci.sh, the vocabulary lint, and its word list, and the
+                     module determinism harness (module-determinism.sh with
+                     module-node.mjs)
 docs/                toolchain record, error codes (errors.md), determinism
-                     rules (determinism.md), law reference (laws.md);
+                     rules (determinism.md), law reference (laws.md), how to
+                     write a module (modules.md);
                      format specification once it moves here
 ```
 

@@ -1,12 +1,13 @@
 //! Regenerates the matter section, frame registry, hub container, section
-//! address, source manifest, module request and tile, time scale,
-//! integrator, observer, and light-time conformance vectors.
+//! address, source manifest, module request and tile, example module, time
+//! scale, integrator, observer, and light-time conformance vectors.
 //!
 //! Usage: `conformance-gen OUT_DIR`. Writes `OUT_DIR/matter/valid/`,
 //! `OUT_DIR/matter/invalid/`, `OUT_DIR/registry/` (see the [`registry`]
 //! module), `OUT_DIR/container/` (see the [`container`] module),
 //! `OUT_DIR/address/` ([`address`]), `OUT_DIR/manifest/` ([`manifest`]),
-//! `OUT_DIR/module-io/` ([`module_io`]), `OUT_DIR/timescale/`
+//! `OUT_DIR/module-io/` ([`module_io`]), `OUT_DIR/module/` ([`module`]),
+//! `OUT_DIR/timescale/`
 //! ([`timescale`]), `OUT_DIR/integrate/` ([`integrate`]), and
 //! `OUT_DIR/observer/` and `OUT_DIR/light/` ([`observer`]), the files
 //! checked in under the same names in
@@ -43,6 +44,7 @@ mod address;
 mod container;
 mod integrate;
 mod manifest;
+mod module;
 mod module_io;
 mod observer;
 mod registry;
@@ -788,6 +790,7 @@ fn generate() -> Vec<File> {
     files.extend(address::files());
     files.extend(manifest::files());
     files.extend(module_io::files());
+    files.extend(module::files());
     files.extend(timescale::files());
     files.extend(integrate::files());
     files.extend(observer::files());
