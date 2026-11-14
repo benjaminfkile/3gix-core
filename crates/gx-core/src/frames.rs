@@ -219,6 +219,50 @@ impl FrameSystem {
         best
     }
 
+    /// The current time and every frame's state as bytes, for comparing two
+    /// runs bit for bit (natively and in the WebAssembly build, for
+    /// example). Little-endian, no padding:
+    ///
+    /// ```text
+    /// time               f64
+    /// frame count        u32
+    /// per frame, ascending frame_id:
+    ///   frame_id         u64
+    ///   position         f64 x3
+    ///   velocity         f64 x3
+    ///   orientation      f64 x4 (x, y, z, w)
+    ///   angular_velocity f64 x3
+    /// ```
+    pub fn state_bytes(&self) -> Vec<u8> {
+        let frames = self.tree.frames();
+        let mut out = Vec::with_capacity(12 + frames.len() * 112);
+        out.extend_from_slice(&self.time.value().to_le_bytes());
+        out.extend_from_slice(&(frames.len() as u32).to_le_bytes());
+        for (f, s) in frames.iter().zip(&self.states) {
+            out.extend_from_slice(&f.frame_id.to_le_bytes());
+            let q = s.orientation;
+            let values = [
+                s.position.x,
+                s.position.y,
+                s.position.z,
+                s.velocity.x,
+                s.velocity.y,
+                s.velocity.z,
+                q.x,
+                q.y,
+                q.z,
+                q.w,
+                s.angular_velocity.x,
+                s.angular_velocity.y,
+                s.angular_velocity.z,
+            ];
+            for v in values {
+                out.extend_from_slice(&v.to_le_bytes());
+            }
+        }
+        out
+    }
+
     /// Index of the frame in `tree.frames()` and `states`.
     fn index(&self, frame_id: u64) -> Option<usize> {
         self.tree

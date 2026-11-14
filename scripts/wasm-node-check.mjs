@@ -1,8 +1,8 @@
 // Runs the WebAssembly build under Node (V8, standing in for the browser)
 // against the conformance vectors the native build is tested with, so the two
 // must agree byte for byte: section addresses, UTC to TDB bit patterns and
-// back, source manifest validation, and registry format version 2
-// validation.
+// back, source manifest validation, registry format version 2
+// validation, and the integrator's state bytes for the integrate vectors.
 //
 // Usage: node scripts/wasm-node-check.mjs [PKG_DIR]
 // PKG_DIR defaults to target/wasm-pkg, the output of the wasm-pack step in
@@ -93,6 +93,26 @@ for (const [file, want] of Object.entries(json("registry/invalid/index.json").ve
   check(got === want, `registry ${file}: ${got}`);
 }
 check(readdirSync(join(conformance, "registry/invalid")).length > 40, "registry vectors present");
+
+function bitsToF64(bits) {
+  const view = new DataView(new ArrayBuffer(8));
+  view.setBigUint64(0, BigInt(bits), true);
+  return view.getFloat64(0, true);
+}
+
+const integrate = json("integrate/cases.json");
+const integrateRegistry = bin(`integrate/${integrate.registry}`);
+for (const c of integrate.cases) {
+  const got = gx.integrate_registry(
+    integrateRegistry,
+    bitsToF64(c.to_seconds.bits),
+    bitsToF64(c.max_step_seconds.bits),
+  );
+  const want = bin(`integrate/${c.state}`);
+  const same = got.length === want.length && got.every((b, i) => b === want[i]);
+  check(same, `integrate ${c.name}: state bytes differ from the native build`);
+}
+check(integrate.cases.length === 3, "integrate cases present");
 
 if (failures !== 0) {
   console.log(`wasm-node-check: ${failures} of ${checks} failed`);

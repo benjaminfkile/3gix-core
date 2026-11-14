@@ -17,12 +17,19 @@
 //! - [`frames`]: reference frames with a floating origin, the current state
 //!   of every frame, and the transforms between frames (`space-model.md`
 //!   section 5, numerical devices, and section 6, time).
-//! - [`gravity`]: Newtonian gravity from point masses and coarse density
-//!   grids (`space-model.md` section 5, gravity between all frames, and
-//!   section 6, integration of every massive frame).
-//! - [`integrate`]: a fixed-step symplectic N-body integrator over the frame
-//!   registry, velocity Verlet or fourth order Yoshida (`space-model.md`
-//!   sections 5 and 6).
+//! - [`gravity`]: first post-Newtonian (Einstein-Infeld-Hoffmann) gravity
+//!   between massive frames, the oblateness force, and Newtonian gravity
+//!   from point masses and coarse density grids (`space-model.md` section
+//!   6.1, and 6.3 for the Newtonian terms the observer uses).
+//! - [`rotation`]: Euler's equations under the torques on a frame's shape,
+//!   and constant spin for frames without moments (`space-model.md` section
+//!   6.2).
+//! - [`integrate`]: the fixed-step N-body and rotation integrator over the
+//!   frame registry: symplectic Newtonian schemes, and the default scheme
+//!   with the relativistic, oblateness, and torque terms as a perturbation
+//!   (`space-model.md` sections 6.1, 6.2, and 7).
+//! - [`history`]: checkpoints of the frame system for jumps back in time
+//!   and retarded states (`space-model.md` sections 6.4 and 7 item 6).
 //! - [`radiance`]: blackbody radiance per wavelength and per band from
 //!   temperature, with the three fixed bands of format version 1
 //!   (`space-model.md` sections 1 and 2, `matter-format.md` section 3.3,
@@ -56,7 +63,8 @@
 //!   `include/gx_core.h`.
 //! - WebAssembly exports, on `wasm32` only: `format_version`, `validate`,
 //!   `decode_chunk_mass`, `section_address`, `manifest_validate`,
-//!   `utc_ms_to_tdb_seconds`, and `tdb_seconds_to_utc_ms`, built with
+//!   `utc_ms_to_tdb_seconds`, `tdb_seconds_to_utc_ms`, and
+//!   `integrate_registry`, built with
 //!   `wasm-bindgen`.
 
 use core::ffi::c_char;
@@ -69,6 +77,7 @@ pub mod error;
 pub mod extinction;
 pub mod frames;
 pub mod gravity;
+pub mod history;
 pub mod integrate;
 pub mod key;
 pub mod lod;
@@ -77,6 +86,7 @@ pub mod matter;
 pub mod module_io;
 pub mod radiance;
 pub mod registry;
+pub mod rotation;
 pub mod sha256;
 pub mod timescale;
 pub mod units;
@@ -436,6 +446,35 @@ mod wasm {
         crate::timescale::tdb_seconds_to_utc_ms(tdb)
     }
 
+    /// Integrates a frame registry (format version 2) from its epoch to
+    /// `to_seconds` (TDB seconds since J2000) in equal steps no longer than
+    /// `max_step_seconds` with the default scheme, and returns
+    /// `FrameSystem::state_bytes` of the result. Throws an `Error` with
+    /// message `CODE: REASON` for an invalid registry, and with code 0 for a
+    /// step limit or time that is not finite and positive where required.
+    #[wasm_bindgen]
+    pub fn integrate_registry(
+        bytes: &[u8],
+        to_seconds: f64,
+        max_step_seconds: f64,
+    ) -> Result<Vec<u8>, JsError> {
+        if !(max_step_seconds.is_finite() && max_step_seconds > 0.0) || !to_seconds.is_finite() {
+            return Err(JsError::new(
+                "0: time and step limit must be finite, step above zero",
+            ));
+        }
+        let reg = crate::registry::decode(bytes).map_err(js)?;
+        let tree = crate::registry::FrameTree::from_registries(&[reg]).map_err(js)?;
+        let mut s = crate::frames::FrameSystem::from_tree(tree);
+        crate::integrate::advance(
+            &mut s,
+            crate::units::Seconds::new(to_seconds),
+            crate::units::Seconds::new(max_step_seconds),
+            crate::integrate::Scheme::default(),
+        );
+        Ok(s.state_bytes())
+    }
+
     /// Total mass in kilograms of every matter section in a hub container
     /// stored under a cell key. Throws an `Error` with message
     /// `CODE: REASON` on failure.
@@ -448,7 +487,9 @@ mod wasm {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub use wasm::{decode_chunk_mass, format_version, manifest_validate, section_address};
+pub use wasm::{
+    decode_chunk_mass, format_version, integrate_registry, manifest_validate, section_address,
+};
 
 #[cfg(test)]
 mod tests {
