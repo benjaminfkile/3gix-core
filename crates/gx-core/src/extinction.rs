@@ -106,6 +106,7 @@ mod tests {
             albedo: [Ratio::new(0.5); 3],
             roughness: Ratio::new(0.0),
             attenuation: Attenuation::new(attenuation),
+            radiating_temperature: Kelvin::new(200.0),
         }
     }
 

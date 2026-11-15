@@ -44,12 +44,15 @@
     "509-roughness-above-one.bin": 509,
     "510-attenuation-infinite.bin": 510,
     "511-attenuation-negative.bin": 511,
+    "512-radiating-temperature-nan.bin": 512,
+    "513-radiating-temperature-negative.bin": 513,
     "521-vacuum-state-not-vacuum.bin": 521,
     "521-zero-density-matter-state.bin": 521,
     "522-matter-state-vacuum.bin": 522,
     "523-vacuum-temperature-nonzero.bin": 523,
     "524-vacuum-albedo-nonzero.bin": 524,
     "525-vacuum-roughness-nonzero.bin": 525,
-    "526-vacuum-attenuation-nonzero.bin": 526
+    "526-vacuum-attenuation-nonzero.bin": 526,
+    "527-vacuum-radiating-temperature-nonzero.bin": 527
   }
 }

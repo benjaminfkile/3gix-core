@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
     const char* mat_key = argv[3];
     char err[256];
 
-    check(gx_format_version() == 1, "gx_format_version() == 1");
+    check(gx_format_version() == 2, "gx_format_version() == 2");
 
     memset(err, 0x7f, sizeof err);
     check(validate("registry", reg, reg_len, err, sizeof err) == 0,

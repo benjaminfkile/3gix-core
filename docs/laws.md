@@ -54,7 +54,7 @@ The three albedo values of a sample map to these bands in this order. Every per-
 | `radiance::band_radiance` | temperature (K) | W m^-2 sr^-1 per band | 64-point midpoint rule per band, ascending wavelength |
 | `radiance::total_radiance` | temperature (K) | W m^-2 sr^-1 | closed form `sigma T^4 / pi` |
 | `radiance::emitted_band_radiance` | temperature (K), albedo per band | W m^-2 sr^-1 per band | `band_radiance * (1 - albedo)` |
-| `emission::summarize` | section, minimum temperature (K) | position (m), power per band (W), radius (m) | sums in sample index order |
+| `emission::summarize` | section, minimum radiating temperature (K) | position (m), escaping power per band (W), radius (m) | fixed ray and sample order, `detmath::exp` |
 | `extinction::extinction_coefficient` | density (kg/m^3), attenuation (m^2/kg) | 1/m | one product |
 | `extinction::transmittance` | density, attenuation, path (m) | ratio | written-out exponential |
 | `extinction::optical_depth_along` | section, segment ends (m), steps | dimensionless | caller-fixed steps, summed in order |
@@ -84,7 +84,7 @@ A frame's `angular_velocity` is relative to inertial axes, in the frame's own ax
 
 ### Emission
 
-`summarize` reduces every non-vacuum sample at or above a minimum temperature to one emitter: the power-weighted centroid of the sample centers, the power per band in watts, and the unweighted root mean square distance of the sample centers from the centroid. A sample's power in a band is `emitted_band_radiance * pi * 6 * s^2` for sub-cube edge `s`: hemispherical radiance over the six faces of the sub-cube. This is a deliberate v1 approximation that ignores faces hidden by hot neighbours. Returns `None` when no sample qualifies.
+`summarize` gives the light that escapes a section: radiative transfer along rays parallel to the three axes in both directions, one per column of samples. Solid and fluid samples are opaque surfaces; gas and plasma samples of optical thickness `tau = density * attenuation * s` emit `B (1 - e^-tau)` along a ray and transmit `e^-tau`; `B` is `emitted_band_radiance(radiating_temperature, albedo)`. Each ray stands for a solid angle of `4 pi / 6` and a cross section of `s^2` (sub-cube edge `s`), so the power is `(2 pi / 3) s^2` times the summed emergent radiance: exact for a thin cloud and, on average over orientations, for an opaque convex body. Only samples at or above a minimum radiating temperature emit; all samples absorb. The emitter's position is the centroid of the emitting sample centers weighted by their escaping power, its radius their unweighted root mean square distance from it. Returns `None` when nothing escapes.
 
 ### Extinction
 

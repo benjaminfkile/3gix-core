@@ -62,6 +62,7 @@ fn hot_or_cold(hot: bool) -> Sample {
         albedo: [Ratio::new(0.0); 3],
         roughness: Ratio::new(0.0),
         attenuation: Attenuation::new(0.1),
+        radiating_temperature: Kelvin::new(if hot { 8000.0 } else { 50.0 }),
     }
 }
 
@@ -86,10 +87,17 @@ fn summarize_one_hot_sample_and_cold_section() {
     // Sub-cube edge 20 m: center of (4, 0, 2) is origin + (90, 10, 50).
     assert_eq!(e.position, Vec3::new(90.0, -90.0, 50.0));
     assert_eq!(e.radius, Meters::new(0.0));
+    // Optical thickness 1e-3 * 0.1 * 20 per sample. The six rays leave
+    // through 0 (+x), 4 (-x), 4 (+y), 0 (-y), 2 (+z), and 2 (-z) cold
+    // samples, each emitting B (1 - e^-tau) and transmitting e^-tau per
+    // sample crossed, over 2 pi / 3 s^2 per ray. Density and attenuation
+    // are stored as f32, so the match is to f32 precision.
+    let tau: f64 = 1.0e-3 * 0.1 * 20.0;
+    let escape = (1.0 - (-tau).exp()) * (2.0 + 2.0 * (-4.0 * tau).exp() + 2.0 * (-2.0 * tau).exp());
     let b = band_radiance(Kelvin::new(8000.0));
     for (got, bi) in e.band_power.iter().zip(b) {
-        let want = bi * PI * 6.0 * 400.0;
-        assert!((got - want).abs() <= 1e-12 * want);
+        let want = bi * 2.0 * PI / 3.0 * 400.0 * escape;
+        assert!((got - want).abs() <= 1e-6 * want, "{got} vs {want}");
     }
 
     let cold = section(|_, _, _| false);

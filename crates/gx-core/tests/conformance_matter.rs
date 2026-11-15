@@ -240,12 +240,15 @@ fn invalid_vectors_fail_with_their_code() {
         codes::ROUGHNESS_OUT_OF_RANGE,
         codes::ATTENUATION_NOT_FINITE,
         codes::ATTENUATION_NEGATIVE,
+        codes::RADIATING_TEMPERATURE_NOT_FINITE,
+        codes::RADIATING_TEMPERATURE_NEGATIVE,
         codes::VACUUM_STATE_NOT_VACUUM,
         codes::MATTER_STATE_VACUUM,
         codes::VACUUM_TEMPERATURE_NONZERO,
         codes::VACUUM_ALBEDO_NONZERO,
         codes::VACUUM_ROUGHNESS_NONZERO,
         codes::VACUUM_ATTENUATION_NONZERO,
+        codes::VACUUM_RADIATING_TEMPERATURE_NONZERO,
     ];
     let want: BTreeSet<u16> = triggerable.into_iter().collect();
     assert_eq!(

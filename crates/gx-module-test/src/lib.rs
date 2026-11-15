@@ -113,6 +113,7 @@ pub fn cell_section(req: &Request, cell: &CellKey, p: &TileParams) -> Result<Vec
             albedo: [Ratio::new(0.5), Ratio::new(0.25), Ratio::new(0.125)],
             roughness: Ratio::new(0.75),
             attenuation: Attenuation::new(0.001),
+            radiating_temperature: Kelvin::new(p.temperature),
         }
     });
     let section = Section::new(*cell, g.origin, g.edge, n, samples).map_err(|e| e.to_string())?;

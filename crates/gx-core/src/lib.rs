@@ -115,7 +115,7 @@ use error::{codes, ValidationError};
 
 /// Version of the matter section format this library reads and writes. The
 /// frame registry has its own version, [`registry::VERSION`] (2).
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = matter::VERSION as u32;
 
 /// Returns the matter format version, [`FORMAT_VERSION`].
 #[cfg_attr(feature = "exports", no_mangle)]
@@ -665,7 +665,7 @@ mod tests {
 
     #[test]
     fn format_version_is_one() {
-        assert_eq!(gx_format_version(), 1);
+        assert_eq!(gx_format_version(), 2);
     }
 
     #[test]

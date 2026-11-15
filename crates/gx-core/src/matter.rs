@@ -9,7 +9,7 @@
 //! A [`Section`] is one compiler's contribution to one cell: a header that
 //! repeats the cell key and geometry, and either nothing (an empty section)
 //! or `n^3` samples. Each sample carries density, state, temperature, albedo
-//! in three bands, roughness, and attenuation.
+//! in three bands, roughness, attenuation, and radiating temperature.
 //!
 //! The wire format stores `f32` channels and so do [`Samples`], but every
 //! public constructor and accessor takes and returns the unit types from
@@ -34,7 +34,7 @@ use crate::units::{Attenuation, CubicMeters, Density, Kelvin, Kilograms, Meters,
 pub const MAGIC: [u8; 4] = [0x33, 0x47, 0x4D, 0x53];
 
 /// The matter section format version this module reads and writes.
-pub const VERSION: u16 = 1;
+pub const VERSION: u16 = 2;
 
 /// Length of the fixed header in bytes.
 pub const HEADER_LEN: usize = 72;
@@ -43,8 +43,9 @@ pub const HEADER_LEN: usize = 72;
 pub const MAX_RESOLUTION: u8 = 64;
 
 /// Bytes per sample in the uncompressed sample block: density 4, state 1,
-/// temperature 4, albedo 12, roughness 4, attenuation 4.
-pub const BYTES_PER_SAMPLE: u64 = 29;
+/// temperature 4, albedo 12, roughness 4, attenuation 4, radiating
+/// temperature 4.
+pub const BYTES_PER_SAMPLE: u64 = 33;
 
 /// Header flag bit 0: the section is empty.
 pub const FLAG_EMPTY: u16 = 1 << 0;
@@ -121,6 +122,12 @@ pub struct Sample {
     pub roughness: Ratio,
     /// Mass attenuation coefficient.
     pub attenuation: Attenuation,
+    /// Radiating temperature: the temperature of the blackbody whose
+    /// radiance equals what the sample's matter sends out of its sub-cube.
+    /// For matter resolved finely enough to be uniform it equals
+    /// `temperature`; for a coarse sample it is what its outermost visible
+    /// matter radiates at (`matter-format.md` section 3.3).
+    pub radiating_temperature: Kelvin,
 }
 
 impl Sample {
@@ -132,6 +139,7 @@ impl Sample {
         albedo: [Ratio::new(0.0); 3],
         roughness: Ratio::new(0.0),
         attenuation: Attenuation::new(0.0),
+        radiating_temperature: Kelvin::new(0.0),
     };
 }
 
@@ -149,6 +157,7 @@ pub struct Samples {
     albedo: Vec<[f32; 3]>,
     roughness: Vec<f32>,
     attenuation: Vec<f32>,
+    radiating_temperature: Vec<f32>,
 }
 
 /// Converts a unit value to its stored `f32`, rounding to nearest.
@@ -166,6 +175,7 @@ impl Samples {
             albedo: Vec::with_capacity(count),
             roughness: Vec::with_capacity(count),
             attenuation: Vec::with_capacity(count),
+            radiating_temperature: Vec::with_capacity(count),
         }
     }
 
@@ -177,6 +187,8 @@ impl Samples {
         self.albedo.push(s.albedo.map(|a| narrow(a.value())));
         self.roughness.push(narrow(s.roughness.value()));
         self.attenuation.push(narrow(s.attenuation.value()));
+        self.radiating_temperature
+            .push(narrow(s.radiating_temperature.value()));
     }
 
     /// Builds `resolution^3` copies of `sample`.
@@ -231,6 +243,7 @@ impl Samples {
             albedo: self.albedo[index].map(|a| Ratio::new(f64::from(a))),
             roughness: Ratio::new(f64::from(self.roughness[index])),
             attenuation: Attenuation::new(f64::from(self.attenuation[index])),
+            radiating_temperature: Kelvin::new(f64::from(self.radiating_temperature[index])),
         })
     }
 
@@ -247,6 +260,7 @@ impl Samples {
         self.albedo[index] = s.albedo.map(|a| narrow(a.value()));
         self.roughness[index] = narrow(s.roughness.value());
         self.attenuation[index] = narrow(s.attenuation.value());
+        self.radiating_temperature[index] = narrow(s.radiating_temperature.value());
     }
 
     /// Iterates over every sample in index order.
@@ -282,6 +296,7 @@ impl Samples {
             albedo: &self.albedo,
             roughness: &self.roughness,
             attenuation: &self.attenuation,
+            radiating_temperature: &self.radiating_temperature,
         })
     }
 }
@@ -373,6 +388,7 @@ struct Channels<'a> {
     albedo: &'a [[f32; 3]],
     roughness: &'a [f32],
     attenuation: &'a [f32],
+    radiating_temperature: &'a [f32],
 }
 
 /// Builds a channel rule error naming the sample and channel.
@@ -483,6 +499,13 @@ fn check_channels(c: &Channels<'_>) -> Result<(), ValidationError> {
         codes::ATTENUATION_NEGATIVE,
         false,
     )?;
+    check_scalar(
+        c.radiating_temperature,
+        "radiating_temperature",
+        codes::RADIATING_TEMPERATURE_NOT_FINITE,
+        codes::RADIATING_TEMPERATURE_NEGATIVE,
+        false,
+    )?;
     for i in 0..c.density.len() {
         let vacuum_state = c.state[i] == State::Vacuum.as_u8();
         if c.density[i] != 0.0 {
@@ -504,7 +527,7 @@ fn check_channels(c: &Channels<'_>) -> Result<(), ValidationError> {
                 format!("is {} but density is 0", c.state[i]),
             ));
         }
-        let zero_rules: [(f32, String, u16); 6] = [
+        let zero_rules: [(f32, String, u16); 7] = [
             (
                 c.temperature[i],
                 "temperature".into(),
@@ -534,6 +557,11 @@ fn check_channels(c: &Channels<'_>) -> Result<(), ValidationError> {
                 c.attenuation[i],
                 "attenuation".into(),
                 codes::VACUUM_ATTENUATION_NONZERO,
+            ),
+            (
+                c.radiating_temperature[i],
+                "radiating_temperature".into(),
+                codes::VACUUM_RADIATING_TEMPERATURE_NONZERO,
             ),
         ];
         for (v, channel, code) in zero_rules {
@@ -689,6 +717,7 @@ fn sample_block(s: &Samples) -> Vec<u8> {
     }
     put(&mut out, &s.roughness);
     put(&mut out, &s.attenuation);
+    put(&mut out, &s.radiating_temperature);
     out
 }
 
@@ -954,13 +983,15 @@ pub fn decode(key: &CellKey, bytes: &[u8]) -> Result<Section, ValidationError> {
     let (state, rest) = rest.split_at(count);
     let (temperature, rest) = rest.split_at(4 * count);
     let (albedo, rest) = rest.split_at(12 * count);
-    let (roughness, attenuation) = rest.split_at(4 * count);
+    let (roughness, rest) = rest.split_at(4 * count);
+    let (attenuation, radiating_temperature) = rest.split_at(4 * count);
     let density = f32s(density);
     let temperature = f32s(temperature);
     let albedo_flat = f32s(albedo);
     let albedo: Vec<[f32; 3]> = albedo_flat.as_chunks::<3>().0.to_vec();
     let roughness = f32s(roughness);
     let attenuation = f32s(attenuation);
+    let radiating_temperature = f32s(radiating_temperature);
     check_channels(&Channels {
         density: &density,
         state,
@@ -968,6 +999,7 @@ pub fn decode(key: &CellKey, bytes: &[u8]) -> Result<Section, ValidationError> {
         albedo: &albedo,
         roughness: &roughness,
         attenuation: &attenuation,
+        radiating_temperature: &radiating_temperature,
     })?;
     let state = state
         .iter()
@@ -985,6 +1017,7 @@ pub fn decode(key: &CellKey, bytes: &[u8]) -> Result<Section, ValidationError> {
             albedo,
             roughness,
             attenuation,
+            radiating_temperature,
         }),
     })
 }
@@ -1008,8 +1041,8 @@ fn nearest(i: usize, coarse: usize, fine: usize) -> usize {
 /// list fails with 801. Every non-empty input is resampled to the finest
 /// resolution present by nearest (block) resampling. Then, per sample:
 /// densities add; the state is that of the densest contributor, the first in
-/// input order on a tie; temperature, albedo, roughness, and attenuation are
-/// density-weighted means. Sums run in `f64` in input order and the results
+/// input order on a tie; temperature, albedo, roughness, attenuation, and
+/// radiating temperature are density-weighted means. Sums run in `f64` in input order and the results
 /// are rounded to `f32`. A sample with total density 0 is vacuum with every
 /// channel 0. Empty inputs contribute nothing, and if every input is empty
 /// the result is an empty section.
@@ -1060,6 +1093,7 @@ pub fn composite(sections: &[&Section]) -> Result<Section, ValidationError> {
                 let mut albedo = [0.0f64; 3];
                 let mut roughness = 0.0f64;
                 let mut attenuation = 0.0f64;
+                let mut radiating = 0.0f64;
                 for &(n, m) in &inputs {
                     let (cx, cy, cz) = (
                         nearest(x, n, fine),
@@ -1081,6 +1115,7 @@ pub fn composite(sections: &[&Section]) -> Result<Section, ValidationError> {
                     }
                     roughness += d * f64::from(m.roughness[ci]);
                     attenuation += d * f64::from(m.attenuation[ci]);
+                    radiating += d * f64::from(m.radiating_temperature[ci]);
                 }
                 match best {
                     None => out.push(Sample::VACUUM),
@@ -1091,6 +1126,7 @@ pub fn composite(sections: &[&Section]) -> Result<Section, ValidationError> {
                         out.albedo.push(albedo.map(|a| narrow(a / total)));
                         out.roughness.push(narrow(roughness / total));
                         out.attenuation.push(narrow(attenuation / total));
+                        out.radiating_temperature.push(narrow(radiating / total));
                     }
                 }
             }
@@ -1124,6 +1160,7 @@ mod tests {
             albedo: [Ratio::new(0.25), Ratio::new(0.5), Ratio::new(0.75)],
             roughness: Ratio::new(0.5),
             attenuation: Attenuation::new(0.125),
+            radiating_temperature: Kelvin::new(temperature),
         }
     }
 
@@ -1159,7 +1196,7 @@ mod tests {
         });
         let raw = encode(&s, Compression::None);
         let packed = encode(&s, Compression::Zstd);
-        assert_eq!(raw.len(), HEADER_LEN + 64 * 29);
+        assert_eq!(raw.len(), HEADER_LEN + 64 * 33);
         assert_ne!(raw, packed);
         assert_eq!(u16_at(&packed, 6), FLAG_ZSTD);
         assert_eq!(decode(&key(), &raw).unwrap(), s);
@@ -1187,16 +1224,16 @@ mod tests {
         let s = section(1, |_, _, _| matter(1.0, State::Gas, 10.0));
         let b = encode(&s, Compression::None);
         assert_eq!(&b[0..4], b"3GMS");
-        assert_eq!(u16_at(&b, 4), 1);
+        assert_eq!(u16_at(&b, 4), 2);
         assert_eq!(u64_at(&b, 8), 7);
         assert_eq!(b[16], 3);
         assert_eq!(b[17], 1);
         assert_eq!((u32_at(&b, 20), u32_at(&b, 24), u32_at(&b, 28)), (5, 2, 1));
         assert_eq!(f64_at(&b, 32), 2.0);
         assert_eq!(f64_at(&b, 56), 2.0);
-        assert_eq!(u64_at(&b, 64), 29);
+        assert_eq!(u64_at(&b, 64), 33);
         // Channel order: density, state, temperature, albedo, roughness,
-        // attenuation.
+        // attenuation, radiating temperature.
         assert_eq!(&b[72..76], &1.0f32.to_le_bytes());
         assert_eq!(b[76], 3);
         assert_eq!(&b[77..81], &10.0f32.to_le_bytes());
@@ -1204,6 +1241,7 @@ mod tests {
         assert_eq!(&b[89..93], &0.75f32.to_le_bytes());
         assert_eq!(&b[93..97], &0.5f32.to_le_bytes());
         assert_eq!(&b[97..101], &0.125f32.to_le_bytes());
+        assert_eq!(&b[101..105], &10.0f32.to_le_bytes());
     }
 
     #[test]
@@ -1366,6 +1404,7 @@ mod tests {
             albedo: [Ratio::new(0.0); 3],
             roughness: Ratio::new(0.0),
             attenuation: Attenuation::new(0.0),
+            radiating_temperature: Kelvin::new(100.0),
         });
         let b = section(1, |_, _, _| Sample {
             density: Density::new(3.0),
@@ -1374,6 +1413,7 @@ mod tests {
             albedo: [Ratio::new(1.0); 3],
             roughness: Ratio::new(1.0),
             attenuation: Attenuation::new(4.0),
+            radiating_temperature: Kelvin::new(500.0),
         });
         let e = Section::empty(key(), origin(), edge()).unwrap();
         let c = composite(&[&a, &e, &b]).unwrap();

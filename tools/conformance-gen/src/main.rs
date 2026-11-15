@@ -100,6 +100,7 @@ fn sample(
         albedo,
         roughness: Ratio::new(roughness),
         attenuation: Attenuation::new(attenuation),
+        radiating_temperature: Kelvin::new(temperature),
     }
 }
 
@@ -492,6 +493,9 @@ mod at {
     pub fn attenuation(i: usize) -> usize {
         HEADER_LEN + 25 * N + 4 * i
     }
+    pub fn radiating_temperature(i: usize) -> usize {
+        HEADER_LEN + 29 * N + 4 * i
+    }
 }
 
 fn invalid() -> Vec<File> {
@@ -527,7 +531,7 @@ fn invalid() -> Vec<File> {
         "unsupported-version",
         codes::UNSUPPORTED_VERSION,
         &raw,
-        &|b| put_u16(b, 4, 2),
+        &|b| put_u16(b, 4, 3),
     );
     add("unknown-flags", codes::UNKNOWN_FLAGS, &raw, &|b| {
         put_u16(b, 6, 0x0004)
@@ -714,6 +718,18 @@ fn invalid() -> Vec<File> {
         &|b| put_f32(b, at::attenuation(7), -0.5),
     );
     add(
+        "radiating-temperature-nan",
+        codes::RADIATING_TEMPERATURE_NOT_FINITE,
+        &raw,
+        &|b| put_f32(b, at::radiating_temperature(5), f32::NAN),
+    );
+    add(
+        "radiating-temperature-negative",
+        codes::RADIATING_TEMPERATURE_NEGATIVE,
+        &raw,
+        &|b| put_f32(b, at::radiating_temperature(5), -2.0),
+    );
+    add(
         "vacuum-state-not-vacuum",
         codes::VACUUM_STATE_NOT_VACUUM,
         &raw,
@@ -754,6 +770,12 @@ fn invalid() -> Vec<File> {
         codes::VACUUM_ATTENUATION_NONZERO,
         &raw,
         &|b| put_f32(b, at::attenuation(0), 1.0),
+    );
+    add(
+        "vacuum-radiating-temperature-nonzero",
+        codes::VACUUM_RADIATING_TEMPERATURE_NONZERO,
+        &raw,
+        &|b| put_f32(b, at::radiating_temperature(0), 3.0),
     );
 
     let mut index = BTreeMap::new();
