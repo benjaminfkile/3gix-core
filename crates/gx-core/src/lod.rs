@@ -10,7 +10,10 @@
 //!
 //! This is pure geometry. It never looks at matter and never fetches
 //! anything: the same camera and frame always give the same cells, whatever
-//! the cells hold.
+//! the cells hold. [`select_cells_with`] also takes the caller's word on
+//! which cells may be refined, so a caller that knows where a frame's
+//! surfaces are (from the cells it has loaded) can spend the cell budget
+//! there instead of on empty space and solid interiors.
 //!
 //! # Determinism
 //!
@@ -70,6 +73,19 @@ pub struct SelectionParams {
 /// A field of view outside `(0, pi)` or a non-finite input refines nothing,
 /// so the selection is at most the depth 0 cell.
 pub fn select_cells(frame: &Frame, camera_in_frame: Vec3, params: &SelectionParams) -> Selection {
+    select_cells_with(frame, camera_in_frame, params, |_| true)
+}
+
+/// [`select_cells`], refining only cells for which `may_refine` is `true`:
+/// a cell that would be refined by the projected edge rule but for which
+/// `may_refine` is `false` is selected as is. With a `may_refine` that is
+/// always `true` the result is exactly [`select_cells`].
+pub fn select_cells_with(
+    frame: &Frame,
+    camera_in_frame: Vec3,
+    params: &SelectionParams,
+    may_refine: impl Fn(CellKey) -> bool,
+) -> Selection {
     let extent = frame.root_extent;
     let cull = extent.value() * 4.0;
     let fov = params.vertical_fov_rad;
@@ -105,8 +121,9 @@ pub fn select_cells(frame: &Frame, camera_in_frame: Vec3, params: &SelectionPara
         }
         Some(e / d.max(e) * focal)
     };
-    let wants_refine =
-        |key: CellKey, px: f64| px > params.pixel_error && key.depth < frame.max_depth;
+    let wants_refine = |key: CellKey, px: f64| {
+        px > params.pixel_error && key.depth < frame.max_depth && may_refine(key)
+    };
 
     let mut done: Vec<CellKey> = Vec::new();
     let mut pending: BinaryHeap<Pending> = BinaryHeap::new();
@@ -313,6 +330,36 @@ mod tests {
         let near = containing(&s, cam).depth;
         let far = containing(&s, Vec3::new(0.49 * R, 0.49 * R, 0.49 * R)).depth;
         assert!(near > far);
+    }
+
+    #[test]
+    fn refinement_follows_the_callers_word() {
+        let cam = Vec3::new(-0.49 * R, -0.49 * R, -0.49 * R);
+        let p = params(100_000);
+        // Accepting every cell is select_cells.
+        assert_eq!(
+            select_cells_with(&frame(6), cam, &p, |_| true),
+            select_cells(&frame(6), cam, &p)
+        );
+        // Rejecting the root selects the root alone.
+        let none = select_cells_with(&frame(6), cam, &p, |_| false);
+        assert_eq!(none.cells, vec![CellKey::new(7, 0, 0, 0, 0).unwrap()]);
+        // Refining only cells crossed by the plane x = 0.1 R (a "surface"):
+        // the budget goes there, and cells away from it stay at depth 1.
+        let x0 = 0.1 * R;
+        let on_plane = |k: CellKey| {
+            let g = k.geometry(Meters::new(R));
+            g.origin.x <= x0 && x0 <= g.origin.x + g.edge.value()
+        };
+        let cam = Vec3::new(0.11 * R, 0.0, 0.0);
+        let s = select_cells_with(&frame(6), cam, &params(2_000), on_plane);
+        assert!(is_sorted(&s));
+        assert!((coverage(&s) - 1.0).abs() < 1e-12);
+        assert_eq!(containing(&s, Vec3::new(x0, 0.01 * R, 0.01 * R)).depth, 6);
+        assert_eq!(containing(&s, Vec3::new(-0.4 * R, 0.0, 0.0)).depth, 1);
+        let plain = select_cells(&frame(6), cam, &params(2_000));
+        let far_on_plane = Vec3::new(x0, 0.3 * R, 0.3 * R);
+        assert!(containing(&s, far_on_plane).depth > containing(&plain, far_on_plane).depth);
     }
 
     #[test]

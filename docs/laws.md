@@ -59,6 +59,7 @@ The three albedo values of a sample map to these bands in this order. Every per-
 | `extinction::transmittance` | density, attenuation, path (m) | ratio | written-out exponential |
 | `extinction::optical_depth_along` | section, segment ends (m), steps | dimensionless | caller-fixed steps, summed in order |
 | `lod::select_cells` | frame, camera (m), selection params | cell keys | fixed refinement order, sorted output |
+| `lod::select_cells_with` | as `select_cells`, plus which cells may be refined | cell keys | as `select_cells` |
 
 ### Gravity and rotation
 
@@ -92,7 +93,7 @@ A frame's `angular_velocity` is relative to inertial axes, in the frame's own ax
 
 ### Cell selection
 
-`select_cells` walks a frame's octree from depth 0. A cell's projected edge in pixels is `edge / max(distance, edge) * view_height_px / (2 tan(fov / 2))`, with `distance` from the camera to the nearest point of the cell. A cell is refined into its eight children while that exceeds `pixel_error` and its depth is below the frame's `max_depth`. Cells farther than `4 * root_extent` are culled. Refinement runs largest projected edge first (ties by ascending `(depth, x, y, z)`) and stops as soon as the next refinement would exceed `max_cells`, so the result never holds more than `max_cells` cells. The output is sorted by `(depth, x, y, z)`.
+`select_cells` walks a frame's octree from depth 0. A cell's projected edge in pixels is `edge / max(distance, edge) * view_height_px / (2 tan(fov / 2))`, with `distance` from the camera to the nearest point of the cell. A cell is refined into its eight children while that exceeds `pixel_error` and its depth is below the frame's `max_depth`. Cells farther than `4 * root_extent` are culled. Refinement runs largest projected edge first (ties by ascending `(depth, x, y, z)`) and stops as soon as the next refinement would exceed `max_cells`, so the result never holds more than `max_cells` cells. The output is sorted by `(depth, x, y, z)`. `select_cells_with` also takes a predicate from the caller: a cell the predicate rejects is never refined and is selected as is; with a predicate that accepts every cell it is `select_cells`.
 
 ## How the determinism is kept
 
