@@ -2,9 +2,8 @@
 // against the conformance vectors the native build is tested with, so the two
 // must agree byte for byte: section addresses, UTC to TDB bit patterns and
 // back, source manifest validation, registry format version 2
-// validation, the integrator's state bytes for the integrate vectors, the
-// observer's final state bytes for the observer vectors, and the retarded
-// state bytes for the light vectors.
+// validation, the integrator's state bytes for the integrate vectors, and
+// the retarded state bytes for the light vectors.
 //
 // Usage: node scripts/wasm-node-check.mjs [PKG_DIR]
 // PKG_DIR defaults to target/wasm-pkg, the output of the wasm-pack step in
@@ -116,25 +115,8 @@ for (const c of integrate.cases) {
 }
 check(integrate.cases.length === 3, "integrate cases present");
 
-const observer = json("observer/cases.json");
-const observerRegistry = bin(`observer/${observer.registry}`);
 const f64s = (list) => Float64Array.from(list.map((n) => bitsToF64(n.bits)));
 const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
-for (const c of observer.cases) {
-  const got = gx.observer_simulate(
-    observerRegistry,
-    BigInt(c.frame_id),
-    f64s(c.radii),
-    f64s(c.densities),
-    c.state,
-    f64s([...c.position, ...c.velocity]),
-    f64s(c.intent),
-    bitsToF64(c.dt_seconds.bits),
-    c.steps,
-  );
-  check(same(got, bin(`observer/${c.state_file}`)), `observer ${c.name}: state bytes differ from the native build`);
-}
-check(observer.cases.length === 3, "observer cases present");
 
 const light = json("light/cases.json");
 const lightRegistry = bin(`light/${light.registry}`);

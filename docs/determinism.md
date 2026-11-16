@@ -54,12 +54,12 @@ To refresh the vectors after an intended change: `rm -rf conformance/matter conf
 
 ## How the laws keep the promise
 
-The laws (`frames`, `gravity`, `rotation`, `integrate`, `history`, `light`, `observer`, `radiance`, `emission`, `extinction`, `lod`) produce no hub bytes, but they are held to the same rule so that a renderer and a conformance check agree bit for bit on where every frame is at a given time.
+The laws (`frames`, `gravity`, `rotation`, `integrate`, `history`, `light`, `radiance`, `emission`, `extinction`, `lod`) produce no hub bytes, but they are held to the same rule so that a renderer and a conformance check agree bit for bit on where every frame is at a given time.
 
 - Frames are always visited by ascending `frame_id`, and gravity sources are summed in that order. No hash map is iterated.
 - Only `+`, `-`, `*`, `/`, and `sqrt` are used, all correctly rounded in IEEE 754, plus the written-out `sin` and `cos` of `detmath`. No platform `sin`, `cos`, or `cbrt`: the Yoshida coefficients come from a written-out cube root of 2, and orientations advance by exact rotation quaternions `(sin(a/2) n, cos(a/2))` built with `detmath`, renormalized every step.
 - The velocity-dependent kick of the default scheme iterates until an iterate repeats bit for bit or a fixed iteration cap; both stopping rules depend only on the values, so every platform stops at the same iteration.
 - `conformance/integrate/` pins the state bytes of a six-frame registry (relativistic terms, oblateness, two rigid frames) after three integrations, and `scripts/wasm-node-check.mjs` checks that the WebAssembly build under Node produces the same bytes.
-- `conformance/observer/` pins the observer's final state after three runs (standing and walking on a turning oblate frame, sinking in a gas profile), and `conformance/light/` pins four light-time solutions, one clamped to the epoch. `scripts/wasm-node-check.mjs` checks both against the WebAssembly build under Node. The light-time iteration and the contact bisections stop by fixed rules that depend only on the values.
+- `conformance/light/` pins four light-time solutions, one clamped to the epoch. `scripts/wasm-node-check.mjs` checks them against the WebAssembly build under Node. The light-time iteration stops by a fixed rule that depends only on the values.
 - `advance` splits an interval into `ceil(|interval| / max_step)` equal steps and sets the time to exactly the target at the end.
 - `radiance`, `extinction`, and `lod` need `exp` and `tan`, and `timescale` needs `sin`. These are written out in `detmath` from correctly rounded operations, never taken from the platform math library. `band_radiance` uses a fixed 64-point midpoint rule per band. See `laws.md`.

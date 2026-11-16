@@ -20,7 +20,7 @@
 //! - [`gravity`]: first post-Newtonian (Einstein-Infeld-Hoffmann) gravity
 //!   between massive frames, the oblateness force, and Newtonian gravity
 //!   from point masses and coarse density grids (`space-model.md` section
-//!   6.1, and 6.3 for the Newtonian terms the observer uses).
+//!   6.1).
 //! - [`rotation`]: Euler's equations under the torques on a frame's shape,
 //!   and constant spin for frames without moments (`space-model.md` section
 //!   6.2).
@@ -33,9 +33,6 @@
 //! - [`light`]: the light-time equation solved against a history: the
 //!   retarded time and state a frame is drawn at, and the retarded position
 //!   a frame is lit from (`space-model.md` section 6.4).
-//! - [`observer`]: the observer as a body in walk mode: gravity, contact
-//!   with friction, drag, and buoyancy, over the matter a probe reports
-//!   (`space-model.md` section 6.3).
 //! - [`radiance`]: blackbody radiance per wavelength and per band from
 //!   temperature, with the three fixed bands of format version 1
 //!   (`space-model.md` sections 1 and 2, `matter-format.md` section 3.3,
@@ -70,8 +67,7 @@
 //! - WebAssembly exports, on `wasm32` only: `format_version`, `validate`,
 //!   `decode_chunk_mass`, `section_address`, `manifest_validate`,
 //!   `utc_ms_to_tdb_seconds`, `tdb_seconds_to_utc_ms`,
-//!   `integrate_registry`, `observer_simulate`, and
-//!   `light_retarded_state`, built with
+//!   `integrate_registry`, and `light_retarded_state`, built with
 //!   `wasm-bindgen`.
 //! - [`detmath`]: deterministic `exp`, `expm1`, `sin`, `cos`, and `tan`,
 //!   public so compiler modules compute bitwise identical values on every
@@ -100,7 +96,6 @@ pub mod lod;
 pub mod manifest;
 pub mod matter;
 pub mod module_io;
-pub mod observer;
 pub mod radiance;
 pub mod registry;
 pub mod rotation;
@@ -492,79 +487,6 @@ mod wasm {
         Ok(s.state_bytes())
     }
 
-    /// Runs the observer over matter whose density depends only on the
-    /// distance from frame `frame_id`'s origin (`observer::RadialProbe`,
-    /// turning with the frame at its registry angular velocity), with the
-    /// default observer constants, for `steps` steps of `dt` seconds of
-    /// `observer::simulate`, from a frame system built from `registry`
-    /// (format version 2) at its epoch. `initial` is the position and
-    /// velocity (six numbers, root axes, relative to the frame), `intent`
-    /// the walking force (three numbers). Returns
-    /// `ObserverState::to_bytes` of the final state. Throws an `Error` with
-    /// message `CODE: REASON` for an invalid registry, and with code 0 for
-    /// any other bad argument.
-    #[wasm_bindgen]
-    #[allow(clippy::too_many_arguments)]
-    pub fn observer_simulate(
-        registry: &[u8],
-        frame_id: u64,
-        radii: &[f64],
-        densities: &[f64],
-        state: u8,
-        initial: &[f64],
-        intent: &[f64],
-        dt: f64,
-        steps: u32,
-    ) -> Result<Vec<u8>, JsError> {
-        use crate::units::{Seconds, Vec3};
-        let bad = |what: &str| JsError::new(&format!("0: {what}"));
-        let finite = |v: &[f64]| v.iter().all(|x| x.is_finite());
-        if initial.len() != 6 || intent.len() != 3 || !finite(initial) || !finite(intent) {
-            return Err(bad("initial needs six finite numbers and intent three"));
-        }
-        if radii.is_empty()
-            || radii.len() != densities.len()
-            || !finite(radii)
-            || !finite(densities)
-        {
-            return Err(bad(
-                "radii and densities must be finite, non-empty, and of one length",
-            ));
-        }
-        if !(dt.is_finite() && dt > 0.0) {
-            return Err(bad("dt must be finite and above zero"));
-        }
-        let state = crate::matter::State::from_u8(state).ok_or_else(|| bad("unknown state"))?;
-        let reg = crate::registry::decode(registry).map_err(js)?;
-        let tree = crate::registry::FrameTree::from_registries(&[reg]).map_err(js)?;
-        let mut system = crate::frames::FrameSystem::from_tree(tree);
-        let w = system
-            .state(frame_id)
-            .ok_or_else(|| bad("frame_id is not in the registry"))?
-            .angular_velocity;
-        let probe = crate::observer::RadialProbe {
-            radii: radii.to_vec(),
-            densities: densities.to_vec(),
-            state,
-            angular_velocity: w,
-        };
-        let mut o = crate::observer::ObserverState::new(
-            Vec3::new(initial[0], initial[1], initial[2]),
-            Vec3::new(initial[3], initial[4], initial[5]),
-        );
-        crate::observer::simulate(
-            &mut o,
-            frame_id,
-            &mut system,
-            &probe,
-            Vec3::new(intent[0], intent[1], intent[2]),
-            Seconds::new(dt),
-            steps,
-            &crate::observer::ObserverParams::default(),
-        );
-        Ok(o.to_bytes())
-    }
-
     /// Solves the light-time equation for frame `frame_id` seen from
     /// `observer` (three numbers, root coordinates) at `t` (TDB seconds
     /// since J2000), against a history of the frame system built from
@@ -632,7 +554,7 @@ mod wasm {
 #[cfg(all(target_arch = "wasm32", feature = "exports"))]
 pub use wasm::{
     decode_chunk_mass, format_version, integrate_registry, light_retarded_state, manifest_validate,
-    observer_simulate, section_address,
+    section_address,
 };
 
 #[cfg(test)]

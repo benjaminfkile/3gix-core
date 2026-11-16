@@ -45,11 +45,6 @@ The three albedo values of a sample map to these bands in this order. Every per-
 | `light::retarded_time` | point (m, root), time (s), history, frame id | retarded time (s), clamped flag, passes | fixed-point iteration from `t`, fixed stopping rule |
 | `light::retarded_state` | point (m, root), time (s), history, frame id | root state at the retarded time | as `retarded_time`, then `History::peek` |
 | `light::retarded_emitter` | lit point (m, root), time (s), history, emitter id | root position (m) | as `retarded_time` |
-| `gravity::newtonian_field_at` | point (m), bodies | m/s^2 | point masses plus J2, sum by ascending `frame_id` |
-| `observer::local_gravity` | offset from a frame (m, root axes), frame, system | m/s^2 | field minus the frame origin's acceleration |
-| `observer::up_direction` | offset from a frame (m, root axes), frame, system | unit vector | against `local_gravity` |
-| `observer::step_observer` | observer state, frame, system, probe, walking force (N), step (s), constants | observer state | `ceil(dt / (1/240 s))` equal substeps, fixed bisection rules |
-| `observer::simulate` | as `step_observer`, step count | observer state, frame system | `step_observer` then one `advance` step per step |
 | `radiance::spectral_radiance` | wavelength (m), temperature (K) | W m^-2 sr^-1 m^-1 | written-out exponential |
 | `radiance::band_radiance` | temperature (K) | W m^-2 sr^-1 per band | 64-point midpoint rule per band, ascending wavelength |
 | `radiance::total_radiance` | temperature (K) | W m^-2 sr^-1 | closed form `sigma T^4 / pi` |
@@ -70,10 +65,6 @@ A frame's `angular_velocity` is relative to inertial axes, in the frame's own ax
 ### Light time
 
 `light` solves `t_r = t - |x_obs - x_frame(t_r)| / c` against a `History` by fixed-point iteration from `t_r = t`. The map contracts by `v / c < 1` for any observer position, so it converges from any start, typically in two to four passes. It stops when two iterates differ by at most 1e-9 s, or by two units in the last place of `t` where an `f64` time cannot resolve 1e-9 s, or after 32 passes. A retarded time before the history's epoch is clamped to the epoch and reported as clamped. Only the receiving point's position at `t` enters, so the solution is well defined at any speed of the observer. Drawing uses `retarded_state`; lighting uses `retarded_emitter` with the lit point as the receiver. Extend the history to `t` first so each pass integrates at most one checkpoint interval.
-
-### Observer
-
-`observer` is the observer's body in walk mode, a point at its lowest point with the constants of `ObserverParams` (defaults: 80 kg, 1.75 m, 0.7 m^2, drag coefficient 1.0, 985 kg/m^3, friction 0.8). Its state is relative to one frame, in root axes. In each substep of at most 1/240 s: half a step of quadratic drag `0.5 rho |v_rel|^2 Cd A` for fluid, gas, and plasma samples, applied with its exact solution so it never reverses the motion; velocity Verlet under gravity (Newtonian point masses plus J2, minus the frame origin's acceleration) and buoyancy `-rho_local V g` with `V = mass / density`; contact; and another half step of drag. Contact with a solid sample moves the observer out along the surface normal (the density gradient, refined by fitting a plane to the solid boundary found by bisection), removes any velocity into the solid (the normal impulse), applies the walking force tangent to the surface, limited by `friction * normal force`, and lets friction, limited by what is left of that, drive the tangential velocity relative to the matter to zero except along the walking force. The renderer supplies the matter through `MatterProbe`, with each sample's velocity (the frame's rotation at that point).
 
 ### Radiance
 

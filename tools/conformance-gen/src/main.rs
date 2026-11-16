@@ -1,6 +1,6 @@
 //! Regenerates the matter section, frame registry, hub container, section
 //! address, source manifest, module request and tile, example module, time
-//! scale, integrator, observer, and light-time conformance vectors.
+//! scale, integrator, and light-time conformance vectors.
 //!
 //! Usage: `conformance-gen OUT_DIR`. Writes `OUT_DIR/matter/valid/`,
 //! `OUT_DIR/matter/invalid/`, `OUT_DIR/registry/` (see the [`registry`]
@@ -9,7 +9,7 @@
 //! `OUT_DIR/module-io/` ([`module_io`]), `OUT_DIR/module/` ([`module`]),
 //! `OUT_DIR/timescale/`
 //! ([`timescale`]), `OUT_DIR/integrate/` ([`integrate`]), and
-//! `OUT_DIR/observer/` and `OUT_DIR/light/` ([`observer`]), the files
+//! `OUT_DIR/light/` ([`light`]), the files
 //! checked in under the same names in
 //! `conformance/` (`matter-format.md` section 8, `client-compute.md`
 //! sections 3 to 5, `space-model.md` sections 6 and 7). Run it with `conformance` as
@@ -43,10 +43,10 @@ use serde_json::{json, Value};
 mod address;
 mod container;
 mod integrate;
+mod light;
 mod manifest;
 mod module;
 mod module_io;
-mod observer;
 mod registry;
 mod timescale;
 
@@ -815,7 +815,7 @@ fn generate() -> Vec<File> {
     files.extend(module::files());
     files.extend(timescale::files());
     files.extend(integrate::files());
-    files.extend(observer::files());
+    files.extend(light::files());
     files.sort_by(|a, b| a.0.cmp(&b.0));
     files
 }
