@@ -7,6 +7,7 @@
     "103-unsupported-version.bin": 103,
     "104-unknown-flags.bin": 104,
     "105-reserved-nonzero.bin": 105,
+    "107-version-2-retired.bin": 107,
     "201-frame-id-mismatch.bin": 201,
     "202-depth-mismatch.bin": 202,
     "203-cell-x-mismatch.bin": 203,
@@ -46,6 +47,9 @@
     "511-attenuation-negative.bin": 511,
     "512-radiating-temperature-nan.bin": 512,
     "513-radiating-temperature-negative.bin": 513,
+    "514-occupancy-nan.bin": 514,
+    "515-occupancy-above-one.bin": 515,
+    "515-occupancy-negative.bin": 515,
     "521-vacuum-state-not-vacuum.bin": 521,
     "521-zero-density-matter-state.bin": 521,
     "522-matter-state-vacuum.bin": 522,
@@ -53,6 +57,8 @@
     "524-vacuum-albedo-nonzero.bin": 524,
     "525-vacuum-roughness-nonzero.bin": 525,
     "526-vacuum-attenuation-nonzero.bin": 526,
-    "527-vacuum-radiating-temperature-nonzero.bin": 527
+    "527-vacuum-radiating-temperature-nonzero.bin": 527,
+    "528-vacuum-occupancy-nonzero.bin": 528,
+    "529-matter-occupancy-zero.bin": 529
   }
 }

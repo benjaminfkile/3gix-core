@@ -7,7 +7,7 @@ The hub's promise is that one fingerprint means one byte sequence. Every functio
 - Fixed layout: little-endian, fixed-width fields, planar channels in the order of `matter-format.md` section 3.3, no padding.
 - Values are rounded from the unit types to `f32` with Rust's `as` cast, which is round-to-nearest-even on every platform.
 - No hash map iteration, no clock, no randomness, no environment input.
-- Sums such as `Section::mass` and the weighted means in `composite` run in `f64` in a fixed order (sample index order, then input order) with plain operators: no fused multiply add, no SIMD reductions.
+- Sums such as `Section::mass`, the weighted means in `composite`, and its occupancy sums (capped at 1 with `f64::min`) run in `f64` in a fixed order (sample index order, then input order) with plain operators: no fused multiply add, no SIMD reductions.
 
 ## How the registry encoder keeps the promise
 

@@ -29,8 +29,9 @@ impl Module for MyModule {
     }
 
     fn compile(req: &Request, tiles: &Tiles) -> Result<Vec<u8>, String> {
-        // Matter section bytes for a cell key, frame registry bytes for
-        // `registry`. A module with no frames returns an empty registry.
+        // Matter section bytes (format version 3) for a cell key, frame
+        // registry bytes for `registry`. A module with no frames returns
+        // an empty registry.
         Err("not written yet".into())
     }
 }
@@ -45,6 +46,8 @@ The crate provides `gx_alloc`, `gx_free`, `gx_abi_version` (returns 1), and `gx_
 3. call `compile`,
 4. validate the section with the library validator (`gx_core::validate`) under the request's chunk key,
 5. return `(ptr << 32) | len` of the bytes, or -1 with the reason stored for `gx_last_error`.
+
+A matter section is format version 3 (`matter-format.md` section 3.3): every sample carries an `occupancy`, the share of its sub-cube that its matter fills. Compute it from your finer structure, as you compute the mean density: 1 inside matter, the filled share where the boundary between matter and vacuum cuts the sample, exactly 0 for vacuum and above 0 for any sample with density above 0. The level set `occupancy = 0.5` of solid and fluid samples is where the renderer draws the surface, so a linear ramp across the boundary, 0.5 at the boundary, keeps its position exact between sample centers. The density stays the mass in the sub-cube over the whole sub-cube's volume. `crates/gx-module-test` is a worked example: gas in layers whose occupancy is the exact filled share of each sample.
 
 Use `Tiles::get(id)` to read a tile. Tile ids and tile contents are private to your module (`client-compute.md` section 5.1). `gx_sources` also returns -1 with a reason if the request does not decode or the ids are not ascending and unique; the ABI table does not list that case, and the host treats it as a module failure.
 

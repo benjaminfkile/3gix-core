@@ -4,10 +4,10 @@ The shared library of the 3GIX space runtime. It is the only place the renderer,
 
 ## What lives here
 
-- **Matter format.** The one wire format a compiler emits, the hub validates, and the renderer reads: a density field sampled on a regular grid over a cell of space, with physical material properties per sample. Encoder, decoder, validator.
+- **Matter format.** The one wire format a compiler emits, the hub validates, and the renderer reads: a density field sampled on a regular grid over a cell of space, with physical material properties per sample. Format version 3: eight channels per sample (37 bytes), the last being `occupancy`, the share of the sample's sub-cube its matter fills; the level set `occupancy = 0.5` of solid and fluid samples is the one definition of a surface. Versions 1 and 2 are retired and rejected (code 107). Encoder, decoder, validator, compositing.
 - **Units.** Branded SI types. Bare numbers do not enter the encoder.
 - **Laws.** Implemented: reference frames with a floating origin (`frames::FrameSystem`, with `relative` as the camera-relative primitive and `nearest_frame` for re-parenting); gravity between every massive frame with the first post-Newtonian (Einstein-Infeld-Hoffmann) corrections, as in the DE ephemerides, plus the J2 force of oblate frames (`gravity`, `G = 6.67430e-11 m^3 kg^-1 s^-2`, `C = 299792458 m/s`, no softening, Newtonian gravity from coarse density grids too); rotation by Euler's equations under the torques other masses exert on a frame's principal moments, and constant spin for frames without moments (`rotation`); a fixed-step integrator (`integrate`) whose default scheme keeps the Newtonian part symplectic (fourth order Yoshida) and adds the relativistic, oblateness, and torque terms as a perturbation, with Newtonian-only schemes still selectable, O(n^2) per stage; checkpoints for jumping back in time and evaluating retarded states (`history`, bounded memory); and light time, so frames are drawn and lit from where they were when the light now arriving left them (`light`). Explicitly not implemented: collisions between frames, matter contributing to gravity (the registry `mass` is the only gravitational mass), fluid dynamics and heat transport, the translational force of a frame's triaxial shape (only its torque), and relativistic effects beyond first post-Newtonian order. Also implemented: blackbody radiance from temperature (`radiance`, Planck's law per wavelength and integrated over three fixed bands), the light that escapes matter, by radiative transfer through it (`emission`), extinction for volumetric matter (`extinction`), and octree cell selection for a camera (`lod`). Every law function, its units, and its determinism contract are listed in `docs/laws.md`.
-- **Bands.** Format version 1 fixes three wavelength bands, `radiance::BAND_EDGES = [700e-9, 600e-9, 500e-9, 400e-9]` meters: band 0 is 600 to 700 nm, band 1 is 500 to 600 nm, band 2 is 400 to 500 nm. A sample's three albedo values map to these bands in this order, and every per-band law output is band 0 first. Band radiance is a 64-point midpoint rule per band, fixed as part of the deterministic contract.
+- **Bands.** The matter format fixes three wavelength bands, `radiance::BAND_EDGES = [700e-9, 600e-9, 500e-9, 400e-9]` meters: band 0 is 600 to 700 nm, band 1 is 500 to 600 nm, band 2 is 400 to 500 nm. A sample's three albedo values map to these bands in this order, and every per-band law output is band 0 first. Band radiance is a 64-point midpoint rule per band, fixed as part of the deterministic contract.
 - **Chunk keys and the frame registry.** Encoding, decoding, and validation. The registry is format version 2: 184-byte frame records with `j2`, `reference_radius`, and `principal_moments`; version 1 is rejected.
 - **Section addresses, source manifests, module bytes.** The SHA-256 section address and span index of `client-compute.md` sections 2.4 and 3 (`address`), source manifests (`manifest`), and the request, tile, and source id bytes that cross the module ABI (`module_io`), all on a dependency-free SHA-256 (`sha256`).
 - **Time scales.** UTC milliseconds to seconds of Barycentric Dynamical Time since J2000 and back (`timescale`), with a built-in leap second table through 2017-01-01 that must be extended when a new leap second is announced.
@@ -29,13 +29,28 @@ The architecture and the byte-level format are specified in the hub repository u
 
 - Architecture: `3GIXHub/docs/architecture/space-model.md` (v2)
 - Hub, client, and module contract: `3GIXHub/docs/architecture/client-compute.md`
-- Byte formats (matter sections version 1, registry version 2): `3GIXHub/docs/architecture/matter-format.md`
+- Byte formats (matter sections version 3, registry version 2): `3GIXHub/docs/architecture/matter-format.md`
+- Rendering contract: `3GIXHub/docs/architecture/rendering.md`
 
 ## Toolchain
 
 Rust stable. Targets: the host triple for native builds and `wasm32-unknown-unknown` for the browser. `wasm-pack` drives WebAssembly builds. `cargo fmt --check`, `cargo clippy -- -D warnings`, and `cargo test` must pass on every change.
 
 `sh scripts/ci.sh` runs the full check locally: toolchain versions, format, clippy, tests, regeneration of the conformance vectors with a byte-for-byte diff against every directory under `conformance/`, the WebAssembly build, a check that the generated TypeScript declarations carry every export, the WebAssembly build run under Node against the native conformance vectors (`scripts/wasm-node-check.mjs`), `wasm-opt`, the headless GPU compute probe, the vocabulary lint, the native shared library build, the C ABI check program, and the module determinism harness (the example module built for `wasm32-unknown-unknown` and run through `gx-module-host` natively and through Node, `scripts/module-determinism.sh`). See `docs/toolchain.md` for the last recorded run.
+
+### Push hook
+
+`scripts/hooks/pre-push` (POSIX `sh`) runs the fast part of CI before every push: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `sh scripts/vocab-lint.sh`, and `cargo test --workspace --lib`. If any of them fails, it prints which one and git refuses the push. Install it once per clone:
+
+```
+sh scripts/install-hooks.sh
+```
+
+This sets `git config core.hooksPath scripts/hooks` in this clone's local configuration only. The hook is the fast check; `sh scripts/ci.sh` remains the full check every commit passes first (`rendering.md` section 6).
+
+### Validation timing
+
+`cargo run -p gx-core --release --example validate_timing` prints the median of 100 runs of `matter::decode` (decode plus validate) of a resolution 32 section, raw and zstd.
 
 ## Layout
 
@@ -73,6 +88,8 @@ crates/gx-core/      the core library: rlib, C ABI cdylib, and WebAssembly expor
   src/lib.rs         C ABI (gx_format_version, gx_validate, gx_error_name,
                      gx_section_address, gx_manifest_validate) and the
                      wasm32 exports
+  examples/          validate_timing: decode plus validate of a resolution
+                     32 section, median of 100 runs
   tests/             integration tests, including the conformance vector checks
                      the orbit tests (laws.rs), and the radiance,
                      emission, and extinction checks (radiance_laws.rs)
@@ -82,10 +99,15 @@ crates/gx-module-guest/  what a compiler author links to become a module:
 crates/gx-module-host/   the native worker's module host on wasmtime:
                      admission checks, limits, sources and compile; also the
                      gx-module-run harness binary
-crates/gx-module-test/   a tiny example module for tests and conformance
+crates/gx-module-test/   a tiny example module for tests and conformance:
+                     layered gas whose occupancy is the filled share of
+                     each sample
 conformance/         conformance vectors any implementation must pass
   keys.json          chunk key vectors
-  matter/valid/      valid sections (.bin) with expected decode results (.json)
+  matter/valid/      valid format 3 sections (.bin) at resolutions 1 to 64,
+                     raw and zstd, with expected decode results (.json):
+                     mass, per-channel sums including occupancy, and state
+                     counts
   matter/invalid/    one or more files per validation code, index.json maps
                      file name to expected code
   registry/valid/    valid registries (.bin) with every decoded field (.json)
@@ -109,9 +131,10 @@ tools/gpu-probe/     headless GPU compute probe (wgpu over Vulkan)
 tools/conformance-gen/  regenerates conformance/matter/,
                      conformance/registry/, and conformance/container/
                      deterministically
-scripts/             ci.sh, the vocabulary lint, and its word list, and the
+scripts/             ci.sh, the vocabulary lint, and its word list, the
                      module determinism harness (module-determinism.sh with
-                     module-node.mjs)
+                     module-node.mjs), the pre-push hook (hooks/pre-push),
+                     and its installer (install-hooks.sh)
 docs/                toolchain record, error codes (errors.md), determinism
                      rules (determinism.md), law reference (laws.md), how to
                      write a module (modules.md);

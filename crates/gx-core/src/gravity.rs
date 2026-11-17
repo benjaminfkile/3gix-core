@@ -448,6 +448,7 @@ mod tests {
             roughness: Ratio::new(0.0),
             attenuation: Attenuation::new(0.0),
             radiating_temperature: Kelvin::new(0.0),
+            occupancy: Ratio::new(if density > 0.0 { 1.0 } else { 0.0 }),
         }
     }
 

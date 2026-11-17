@@ -25,10 +25,14 @@ The codes are defined in `crates/gx-core/src/error.rs` (module `codes`). This ta
 
 `decode` and `validate` run `matter-format.md` section 4 steps 1, 2, and 4 through 8 in that order and stop at the first failing rule. Step 3, the registry branch, belongs to the top-level validator that dispatches on the key. Within each step the checks run in the order of the table below. For channel values (step 8):
 
-1. Each channel's own rule, channel by channel in wire order (density, state, temperature, albedo, roughness, attenuation, radiating temperature). Within a channel, samples run in index order, and for each sample the finiteness rule comes before the range rule. Albedo checks bands 0, 1, 2 of a sample before moving to the next sample.
-2. Then the vacuum rules, sample by sample in index order. For each sample: a non-zero density with the vacuum state (522), or a zero density with a non-vacuum state (521), then the zero rules for temperature, albedo bands 0 to 2, roughness, attenuation, and radiating temperature (523 to 527).
+1. Each channel's own rule, channel by channel in wire order (density, state, temperature, albedo, roughness, attenuation, radiating temperature, occupancy). Within a channel, samples run in index order, and for each sample the finiteness rule comes before the range rule. Albedo checks bands 0, 1, 2 of a sample before moving to the next sample.
+2. Then the vacuum and occupancy rules, sample by sample in index order. For a sample with a non-zero density: the vacuum state (522), then occupancy 0 (529). For a sample with density 0: a non-vacuum state (521), then the zero rules for temperature, albedo bands 0 to 2, roughness, attenuation, radiating temperature, and occupancy (523 to 528).
 
-A value of negative zero compares equal to zero, so it passes "greater than or equal to 0" and counts as density 0.
+A reason names the sample and the channel, `sample INDEX channel NAME: PROBLEM`, with the band for albedo (`albedo[1]`). The validator builds no text while checks pass; the reason is formatted only for the rule that failed.
+
+A value of negative zero compares equal to zero, so it passes "greater than or equal to 0", counts as density 0, and as an occupancy counts as 0 (so it fails 529 on a matter sample).
+
+Step 1 checks the version after the magic: a `format_version` of 1 or 2 fails with 107 (retired, `matter-format.md` section 9), any other value but 3 with 103.
 
 ### Frame registry
 
@@ -48,7 +52,7 @@ The oblateness and moment rules (626 to 633) run after the root rules, in this o
 1. At least 4 bytes (701), then `section_count` not negative (702).
 2. Entry by entry in table order, field by field: id length (703 if cut off, 704 if negative), id bytes (703 if cut off, 705 if not UTF-8), `codec_len` (703 if cut off, 706 if negative, 707 if above 0), `data_offset` (703, 708), `data_len` (703, 709).
 3. Then entry by entry against the data region that follows the table: an entry starting before the previous entry's end (710) or after it (711; the first entry must start at 0), an entry ending past the data region (712). After the last entry, any bytes left in the data region (713).
-4. Then each section in table order, with `matter::decode` against the key, or `registry::decode`. A failing section keeps its own code (101 to 527, or 601 to 633), and its reason starts with `section INDEX:`.
+4. Then each section in table order, with `matter::decode` against the key, or `registry::decode`. A failing section keeps its own code (101 to 529, or 601 to 633), and its reason starts with `section INDEX:`.
 
 A container with `section_count` 0 and no data is valid and holds no sections. Layer ids are read only to move past them. They are never returned and never appear in a reason.
 
@@ -84,10 +88,11 @@ Negative zero counts as zero for the root position and velocity rules, for `j2`,
 |---|---|
 | 101 | The input is shorter than the 72-byte header. |
 | 102 | The magic is not `0x33 0x47 0x4D 0x53`. |
-| 103 | `format_version` is not 1. |
+| 103 | `format_version` is not 3 and not a retired version (1 or 2, code 107). |
 | 104 | A `flags` bit other than bit 0 (EMPTY) and bit 1 (ZSTD) is set. |
 | 105 | The reserved `u16` at offset 18 is not 0. |
 | 106 | The C ABI was given a null `bytes` pointer with a non-zero `bytes_len`. No byte vector. |
+| 107 | `format_version` is 1 or 2, retired with format version 3 (section 9): version 2 has no occupancy channel and version 1 no radiating temperature. |
 
 ### 200 to 299: key (section 4 step 4, section 2)
 
@@ -144,6 +149,8 @@ Negative zero counts as zero for the root position and velocity rules, for `j2`,
 | 511 | An attenuation is negative. |
 | 512 | A radiating temperature is NaN or infinite. |
 | 513 | A radiating temperature is negative. |
+| 514 | An occupancy is NaN or infinite. |
+| 515 | An occupancy is below 0 or above 1. |
 | 521 | A sample with density 0 has a state other than vacuum. |
 | 522 | A sample with density above 0 has the vacuum state. |
 | 523 | A vacuum sample has a temperature other than 0. |
@@ -151,6 +158,8 @@ Negative zero counts as zero for the root position and velocity rules, for `j2`,
 | 525 | A vacuum sample has a roughness other than 0. |
 | 526 | A vacuum sample has an attenuation other than 0. |
 | 527 | A vacuum sample has a radiating temperature other than 0. |
+| 528 | A vacuum sample has an occupancy other than 0. |
+| 529 | A sample with density above 0 has occupancy 0. |
 
 ### 600 to 649: one frame registry (sections 5.1, 5.2, and 5.3)
 
@@ -298,7 +307,7 @@ Declared in `include/gx_core.h` (`matter-format.md` section 7, `client-compute.m
 
 ## Conformance vectors
 
-`conformance/matter/invalid/` holds at least one file for every code above that bytes can trigger (every code from 101 to 527 except 106, 200, 206, 207, 208, and 417, which bytes alone cannot trigger). Files are named `CODE-RULE.bin`. `index.json` gives the key every file is validated under and maps each file name to its expected code.
+`conformance/matter/invalid/` holds at least one file for every code above that bytes can trigger (every code from 101 to 529 except 106, 200, 206, 207, 208, and 417, which bytes alone cannot trigger). Files are named `CODE-RULE.bin`. `index.json` gives the key every file is validated under and maps each file name to its expected code.
 
 `conformance/registry/invalid/` holds at least one file for every code from 601 to 633 except 608, named `CODE-RULE.bin`, with `index.json` mapping each file name to its expected code. `conformance/registry/union/` holds registries that are each valid alone, and its `index.json` lists cases: which files form the union, in order, and either the expected tree (root, frame count, every path to the root) or the expected code. There is at least one case for every code from 651 to 656.
 

@@ -3,14 +3,14 @@
 //! Implements the blackbody law of `space-model.md` section 1 (rule 2) and
 //! section 2 (the renderer derives emission from temperature), and the
 //! emission derived quantity of `matter-format.md` section 3.3: blackbody
-//! radiance from a sample's `temperature`, scaled by emissivity
+//! radiance from a sample's `radiating_temperature`, scaled by emissivity
 //! `1 - albedo` per band. Any matter with a temperature above 0 K emits; the
 //! law does not know what the matter is.
 //!
 //! # Bands
 //!
-//! Format version 1 fixes three wavelength bands, given by [`BAND_EDGES`] in
-//! meters, from long to short wavelength:
+//! The matter format fixes three wavelength bands, given by [`BAND_EDGES`]
+//! in meters, from long to short wavelength:
 //!
 //! | Band | From | To |
 //! |---|---|---|

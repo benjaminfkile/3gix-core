@@ -89,6 +89,16 @@ fn matter_chunk() {
         want["composite"]["resolution"].as_u64().unwrap()
     );
     assert_eq!(c.mass().value().to_bits(), bits(&want["composite"]["mass"]));
+    let occupancy: f64 = c
+        .samples()
+        .unwrap()
+        .iter()
+        .map(|x| x.occupancy.value())
+        .sum();
+    assert_eq!(
+        occupancy.to_bits(),
+        bits(&want["composite"]["occupancy_sum"])
+    );
 
     // The data region is the source files, concatenated in table order.
     let data: Vec<u8> = sources.concat();

@@ -87,7 +87,8 @@ pub mod codes {
         HEADER_TOO_SHORT = 101;
         /// The magic is not `0x33 0x47 0x4D 0x53`.
         BAD_MAGIC = 102;
-        /// `format_version` is not 1.
+        /// `format_version` is neither 3, the version this library
+        /// implements, nor a retired version (which has its own code, 107).
         UNSUPPORTED_VERSION = 103;
         /// A `flags` bit other than bit 0 (EMPTY) and bit 1 (ZSTD) is set.
         UNKNOWN_FLAGS = 104;
@@ -96,6 +97,10 @@ pub mod codes {
         /// The C ABI was given a null `bytes` pointer with a non-zero
         /// `bytes_len`.
         BYTES_POINTER_NULL = 106;
+        /// `format_version` is 1 or 2, retired with format version 3
+        /// (section 9): version 2 has no occupancy channel and version 1 no
+        /// radiating temperature, so neither is read.
+        VERSION_RETIRED = 107;
 
         // 200 to 299: key (section 4 step 4, section 2).
 
@@ -191,6 +196,10 @@ pub mod codes {
         RADIATING_TEMPERATURE_NOT_FINITE = 512;
         /// A radiating temperature is negative.
         RADIATING_TEMPERATURE_NEGATIVE = 513;
+        /// An occupancy is NaN or infinite.
+        OCCUPANCY_NOT_FINITE = 514;
+        /// An occupancy is outside 0 to 1.
+        OCCUPANCY_OUT_OF_RANGE = 515;
         /// A sample with density 0 has a state other than vacuum.
         VACUUM_STATE_NOT_VACUUM = 521;
         /// A sample with density above 0 has the vacuum state.
@@ -205,6 +214,10 @@ pub mod codes {
         VACUUM_ATTENUATION_NONZERO = 526;
         /// A vacuum sample has a radiating temperature other than 0.
         VACUUM_RADIATING_TEMPERATURE_NONZERO = 527;
+        /// A vacuum sample has an occupancy other than 0.
+        VACUUM_OCCUPANCY_NONZERO = 528;
+        /// A sample with density above 0 has occupancy 0.
+        MATTER_OCCUPANCY_ZERO = 529;
 
         // 600 to 649: one frame registry (sections 5.1, 5.2, and 5.3).
 

@@ -1,8 +1,9 @@
 // Runs the WebAssembly build under Node (V8, standing in for the browser)
 // against the conformance vectors the native build is tested with, so the two
 // must agree byte for byte: section addresses, UTC to TDB bit patterns and
-// back, source manifest validation, registry format version 2
-// validation, the integrator's state bytes for the integrate vectors, and
+// back, source manifest validation, matter format version 3 validation
+// (every valid and invalid matter vector, and the mass of the matter
+// container), registry format version 2 validation, the integrator's state bytes for the integrate vectors, and
 // the retarded state bytes for the light vectors.
 //
 // Usage: node scripts/wasm-node-check.mjs [PKG_DIR]
@@ -84,6 +85,33 @@ for (const name of ["empty", "one", "three"]) {
 for (const [file, want] of Object.entries(json("manifest/invalid/index.json").vectors)) {
   const got = code(() => gx.manifest_validate(bin(`manifest/invalid/${file}`)));
   check(got === want, `manifest ${file}: ${got}`);
+}
+
+check(gx.format_version() === 3, `format_version is ${gx.format_version()}`);
+const matterNames = readdirSync(join(conformance, "matter/valid"))
+  .filter((f) => f.endsWith(".bin"))
+  .map((f) => f.slice(0, -4));
+for (const name of matterNames) {
+  const want = json(`matter/valid/${name}.json`);
+  const got = code(() => gx.validate(want.key, bin(`matter/valid/${name}.bin`)));
+  check(got === 0, `matter ${name}: ${got}`);
+}
+check(matterNames.length >= 10, "matter valid vectors present");
+const matterInvalid = json("matter/invalid/index.json");
+for (const [file, want] of Object.entries(matterInvalid.vectors)) {
+  const got = code(() => gx.validate(matterInvalid.key, bin(`matter/invalid/${file}`)));
+  check(got === want, `matter ${file}: ${got}`);
+}
+for (const c of [107, 514, 515, 528, 529]) {
+  check(Object.values(matterInvalid.vectors).includes(c), `matter vector for code ${c}`);
+}
+const chunk = json("container/valid/matter-chunk.json");
+const chunkMass = gx.decode_chunk_mass(chunk.key, bin("container/valid/matter-chunk.bin"));
+check(f64Bits(chunkMass) === chunk.mass_sum.bits, `matter chunk mass: ${f64Bits(chunkMass)}`);
+const containerInvalid = json("container/invalid/index.json");
+for (const [file, want] of Object.entries(containerInvalid.vectors)) {
+  const got = code(() => gx.decode_chunk_mass(containerInvalid.key, bin(`container/invalid/${file}`)));
+  check(got === want, `container ${file}: ${got}`);
 }
 
 for (const name of ["empty", "single-root", "tree"]) {

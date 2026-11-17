@@ -24,7 +24,11 @@
 //!
 //! - `valid/NAME.bin` is a valid section and `valid/NAME.json` lists what any
 //!   decoder must recover from it: key, origin, edge, resolution, flags,
-//!   sample count, total mass, per-channel sums, and per-state counts. Every
+//!   sample count, total mass, per-channel sums (occupancy included), and
+//!   per-state counts. Sections are matter format version 3. Shapes with a
+//!   boundary against vacuum (a ball, concentric shells, a ring, a plane)
+//!   carry partly filled samples whose occupancy is a linear ramp one
+//!   sample wide across the boundary, 0.5 at the boundary. Every
 //!   `f64` appears as a decimal string and as its IEEE 754 bit pattern in
 //!   hex, and the bit pattern is the one to compare.
 //! - `invalid/CODE-RULE.bin` breaks exactly one rule. `invalid/index.json`
@@ -84,7 +88,8 @@ fn ratio3(a: f64, b: f64, c: f64) -> [Ratio; 3] {
     [Ratio::new(a), Ratio::new(b), Ratio::new(c)]
 }
 
-/// Builds a non-empty sample with the given values.
+/// Builds a non-empty sample with the given values, filling its whole
+/// sub-cube (occupancy 1).
 fn sample(
     density: f64,
     state: State,
@@ -101,6 +106,28 @@ fn sample(
         roughness: Ratio::new(roughness),
         attenuation: Attenuation::new(attenuation),
         radiating_temperature: Kelvin::new(temperature),
+        occupancy: Ratio::new(1.0),
+    }
+}
+
+/// Occupancy of a sample whose center lies `inside` sample edges inside
+/// the boundary of a shape (negative outside): a linear ramp one sample
+/// wide, 0.5 on the boundary, clamped to 0 to 1.
+fn ramp(inside: f64) -> f64 {
+    (0.5 + inside).clamp(0.0, 1.0)
+}
+
+/// `s` with only the share `occupancy` of its sub-cube filled: the density
+/// is the mass over the whole sub-cube, so it scales by the share. Vacuum
+/// for occupancy 0.
+fn partly(s: Sample, occupancy: f64) -> Sample {
+    if occupancy <= 0.0 {
+        return Sample::VACUUM;
+    }
+    Sample {
+        density: Density::new(s.density.value() * occupancy),
+        occupancy: Ratio::new(occupancy),
+        ..s
     }
 }
 
@@ -127,6 +154,8 @@ fn summary(section: &Section, bytes: &[u8]) -> Value {
     let mut albedo = [0.0f64; 3];
     let mut roughness = 0.0f64;
     let mut attenuation = 0.0f64;
+    let mut radiating_temperature = 0.0f64;
+    let mut occupancy = 0.0f64;
     let mut states = [0u64; 5];
     let mut count = 0u64;
     if let Some(samples) = section.samples() {
@@ -139,6 +168,8 @@ fn summary(section: &Section, bytes: &[u8]) -> Value {
             }
             roughness += s.roughness.value();
             attenuation += s.attenuation.value();
+            radiating_temperature += s.radiating_temperature.value();
+            occupancy += s.occupancy.value();
             states[usize::from(s.state.as_u8())] += 1;
         }
     }
@@ -161,6 +192,8 @@ fn summary(section: &Section, bytes: &[u8]) -> Value {
             "albedo": [number(albedo[0]), number(albedo[1]), number(albedo[2])],
             "roughness": number(roughness),
             "attenuation": number(attenuation),
+            "radiating_temperature": number(radiating_temperature),
+            "occupancy": number(occupancy),
         },
         "state_counts": state_counts,
     })
@@ -248,14 +281,19 @@ fn res3_mixed() -> Section {
             State::Plasma => (1.0e-6, 1.0e-2),
         };
         let a = rng.unit();
-        sample(
+        let s = sample(
             rng.range(lo, hi),
             state,
             rng.range(3.0, 20000.0),
             ratio3(a, rng.unit(), rng.unit()),
             rng.unit(),
             rng.range(0.0, 2.0),
-        )
+        );
+        // Occupancy in (0, 1]: some samples cut by a boundary.
+        Sample {
+            occupancy: Ratio::new(1.0 - 0.9 * rng.unit()),
+            ..s
+        }
     });
     build(cell(3, 2, 3, 1, 0), 4096.0, 3, samples)
 }
@@ -266,7 +304,8 @@ fn res16_ball() -> Section {
     let n = 16.0;
     let samples = Samples::from_fn(16, |x, y, z| {
         let c = |i: u32| f64::from(i) + 0.5 - n / 2.0;
-        let r = (c(x) * c(x) + c(y) * c(y) + c(z) * c(z)).sqrt() / n;
+        let r_samples = (c(x) * c(x) + c(y) * c(y) + c(z) * c(z)).sqrt();
+        let r = r_samples / n;
         let noise = rng.unit();
         if r < 0.3 {
             sample(
@@ -286,17 +325,17 @@ fn res16_ball() -> Section {
                 0.1,
                 0.001 * rng.unit(),
             )
-        } else if r < 0.5 {
-            sample(
+        } else {
+            // The gas ends at r = n / 2, with a one-sample ramp across it.
+            let s = sample(
                 0.1 + noise,
                 State::Gas,
                 200.0 + 50.0 * rng.unit(),
                 ratio3(0.8, 0.85, 0.9),
                 1.0,
                 0.01 + 0.02 * rng.unit(),
-            )
-        } else {
-            Sample::VACUUM
+            );
+            partly(s, ramp(n / 2.0 - r_samples))
         }
     });
     build(cell(4, 5, 17, 3, 30), 6.4e6, 16, samples)
@@ -335,10 +374,10 @@ fn res64_shells() -> Section {
                 0.05,
                 0.001,
             )
-        } else if r < 28.0 {
-            sample(1.2, State::Gas, 250.0, ratio3(0.9, 0.92, 0.95), 1.0, 0.03)
         } else {
-            Sample::VACUUM
+            // The gas ends at r = 28 samples, with a one-sample ramp.
+            let s = sample(1.2, State::Gas, 250.0, ratio3(0.9, 0.92, 0.95), 1.0, 0.03);
+            partly(s, ramp(28.0 - r))
         }
     });
     build(cell(5, 4, 8, 8, 8), 1.0e5, 64, samples)
@@ -379,6 +418,46 @@ fn res2_shared_cell() -> Section {
     build(key, 6.4e6, 2, Samples::from_samples(list))
 }
 
+/// A solid ring at resolution 8: a torus about the z axis through the cell
+/// center, major radius 2.5 and minor radius 1.25 samples, its surface a
+/// one-sample occupancy ramp.
+fn res8_ring() -> Section {
+    let n = 8.0;
+    let samples = Samples::from_fn(8, |x, y, z| {
+        let c = |i: u32| f64::from(i) + 0.5 - n / 2.0;
+        let rho = (c(x) * c(x) + c(y) * c(y)).sqrt();
+        let tube = ((rho - 2.5) * (rho - 2.5) + c(z) * c(z)).sqrt();
+        let s = sample(
+            2900.0,
+            State::Solid,
+            180.0,
+            ratio3(0.6, 0.55, 0.5),
+            0.4,
+            0.0,
+        );
+        partly(s, ramp(1.25 - tube))
+    });
+    build(cell(8, 6, 40, 21, 33), 3.0e5, 8, samples)
+}
+
+/// A fluid layer at resolution 4 with a level surface 1.75 samples above
+/// the bottom of the cell: occupancy 1 in the lowest layer of samples, 0.75
+/// in the next, vacuum above.
+fn res4_plane() -> Section {
+    let samples = Samples::from_fn(4, |_, _, z| {
+        let s = sample(
+            1025.0,
+            State::Fluid,
+            277.0,
+            ratio3(0.02, 0.04, 0.08),
+            0.02,
+            0.0005,
+        );
+        partly(s, (1.75 - f64::from(z)).clamp(0.0, 1.0))
+    });
+    build(cell(9, 1, 0, 1, 0), 2.0e3, 4, samples)
+}
+
 fn empty() -> Section {
     let key = cell(6, 10, 1000, 0, 1023);
     let g = key.geometry(Meters::new(1.0e4));
@@ -392,6 +471,8 @@ fn valid() -> Vec<File> {
         ("res2-every-state", res2_every_state(), Compression::None),
         ("res2-shared-cell", res2_shared_cell(), Compression::None),
         ("res3-mixed", res3_mixed(), Compression::None),
+        ("res4-plane", res4_plane(), Compression::None),
+        ("res8-ring-zstd", res8_ring(), Compression::Zstd),
         ("res16-raw", ball.clone(), Compression::None),
         ("res16-zstd", ball, Compression::Zstd),
         ("res64-shells-zstd", res64_shells(), Compression::Zstd),
@@ -496,6 +577,9 @@ mod at {
     pub fn radiating_temperature(i: usize) -> usize {
         HEADER_LEN + 29 * N + 4 * i
     }
+    pub fn occupancy(i: usize) -> usize {
+        HEADER_LEN + 33 * N + 4 * i
+    }
 }
 
 fn invalid() -> Vec<File> {
@@ -531,8 +615,11 @@ fn invalid() -> Vec<File> {
         "unsupported-version",
         codes::UNSUPPORTED_VERSION,
         &raw,
-        &|b| put_u16(b, 4, 3),
+        &|b| put_u16(b, 4, 4),
     );
+    add("version-2-retired", codes::VERSION_RETIRED, &raw, &|b| {
+        put_u16(b, 4, 2)
+    });
     add("unknown-flags", codes::UNKNOWN_FLAGS, &raw, &|b| {
         put_u16(b, 6, 0x0004)
     });
@@ -585,7 +672,7 @@ fn invalid() -> Vec<File> {
         "empty-block-len-nonzero",
         codes::EMPTY_BLOCK_LEN_NONZERO,
         &empty,
-        &|b| put_u64(b, 64, 232),
+        &|b| put_u64(b, 64, 8 * 37),
     );
     add("empty-zstd-set", codes::EMPTY_ZSTD_SET, &empty, &|b| {
         put_u16(b, 6, 0x0003)
@@ -612,7 +699,7 @@ fn invalid() -> Vec<File> {
         "block-len-mismatch",
         codes::BLOCK_LEN_MISMATCH,
         &raw,
-        &|b| put_u64(b, 64, 231),
+        &|b| put_u64(b, 64, 8 * 37 - 1),
     );
     add("raw-block-short", codes::RAW_LENGTH_MISMATCH, &raw, &|b| {
         b.pop();
@@ -729,6 +816,21 @@ fn invalid() -> Vec<File> {
         &raw,
         &|b| put_f32(b, at::radiating_temperature(5), -2.0),
     );
+    add("occupancy-nan", codes::OCCUPANCY_NOT_FINITE, &raw, &|b| {
+        put_f32(b, at::occupancy(6), f32::NAN)
+    });
+    add(
+        "occupancy-above-one",
+        codes::OCCUPANCY_OUT_OF_RANGE,
+        &raw,
+        &|b| put_f32(b, at::occupancy(6), 1.25),
+    );
+    add(
+        "occupancy-negative",
+        codes::OCCUPANCY_OUT_OF_RANGE,
+        &raw,
+        &|b| put_f32(b, at::occupancy(3), -0.5),
+    );
     add(
         "vacuum-state-not-vacuum",
         codes::VACUUM_STATE_NOT_VACUUM,
@@ -776,6 +878,18 @@ fn invalid() -> Vec<File> {
         codes::VACUUM_RADIATING_TEMPERATURE_NONZERO,
         &raw,
         &|b| put_f32(b, at::radiating_temperature(0), 3.0),
+    );
+    add(
+        "vacuum-occupancy-nonzero",
+        codes::VACUUM_OCCUPANCY_NONZERO,
+        &raw,
+        &|b| put_f32(b, at::occupancy(0), 0.5),
+    );
+    add(
+        "matter-occupancy-zero",
+        codes::MATTER_OCCUPANCY_ZERO,
+        &raw,
+        &|b| put_f32(b, at::occupancy(2), 0.0),
     );
 
     let mut index = BTreeMap::new();

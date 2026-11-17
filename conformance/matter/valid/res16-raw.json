@@ -6,8 +6,8 @@
   "flags": 0,
   "key": "4-5-17-3-30",
   "mass": {
-    "bits": "0x43d121a8f49eea2f",
-    "decimal": "4.937814165871443e18"
+    "bits": "0x43d124b6841f8d49",
+    "decimal": "4.941251505550599e18"
   },
   "origin": [
     {
@@ -27,41 +27,49 @@
   "sample_count": 4096,
   "state_counts": {
     "fluid": 608,
-    "gas": 1088,
+    "gas": 1424,
     "plasma": 0,
     "solid": 480,
-    "vacuum": 1920
+    "vacuum": 1584
   },
   "sums": {
     "albedo": [
       {
-        "bits": "0x4091eda416298c00",
-        "decimal": "1.1474102407924365e3"
+        "bits": "0x409627162ef98a00",
+        "decimal": "1.417771663569496e3"
       },
       {
-        "bits": "0x409325362c7d8800",
-        "decimal": "1.225302904092241e3"
+        "bits": "0x4097b00c07ab2300",
+        "decimal": "1.5160117480030167e3"
       },
       {
-        "bits": "0x4094e537a95c4000",
-        "decimal": "1.33730435699597e3"
+        "bits": "0x4099a8a7a127c800",
+        "decimal": "1.6421637006965466e3"
       }
     ],
     "attenuation": {
-      "bits": "0x40360d0bf68cb3f8",
-      "decimal": "2.2050963792182273e1"
+      "bits": "0x403cd9cb487dc040",
+      "decimal": "2.8850758104992792e1"
     },
     "density": {
-      "bits": "0x414349d06d2caf60",
-      "decimal": "2.5281608529261798e6"
+      "bits": "0x41434d4062aaf276",
+      "decimal": "2.529920770841892e6"
+    },
+    "occupancy": {
+      "bits": "0x40a0d2de71720000",
+      "decimal": "2.153434459269047e3"
+    },
+    "radiating_temperature": {
+      "bits": "0x4123702b90aa0000",
+      "decimal": "6.369497825469971e5"
     },
     "roughness": {
-      "bits": "0x4095c5317a951800",
-      "decimal": "1.3932983191772364e3"
+      "bits": "0x409b1757965ae400",
+      "decimal": "1.7338355344964657e3"
     },
     "temperature": {
-      "bits": "0x41212df6f96e0000",
-      "decimal": "5.629394871673584e5"
+      "bits": "0x4123702b90aa0000",
+      "decimal": "6.369497825469971e5"
     }
   }
 }
