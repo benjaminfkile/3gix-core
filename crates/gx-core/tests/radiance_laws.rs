@@ -63,6 +63,7 @@ fn hot_or_cold(hot: bool) -> Sample {
         roughness: Ratio::new(0.0),
         attenuation: Attenuation::new(0.1),
         radiating_temperature: Kelvin::new(if hot { 8000.0 } else { 50.0 }),
+        occupancy: Ratio::new(1.0),
     }
 }
 

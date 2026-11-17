@@ -19,8 +19,11 @@ extern "C" {
 #endif
 
 /*
- * Returns the matter section format version this library implements (1).
- * The frame registry it reads and writes is registry format version 2.
+ * Returns the matter section format version this library implements (3:
+ * eight channels per sample, occupancy last, 37 bytes per sample). Versions
+ * 1 and 2 are retired: a section carrying either fails validation with
+ * code 107 (VERSION_RETIRED). The frame registry it reads and writes is
+ * registry format version 2.
  */
 uint32_t gx_format_version(void);
 

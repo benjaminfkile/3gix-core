@@ -9,7 +9,9 @@
 //! A [`Section`] is one compiler's contribution to one cell: a header that
 //! repeats the cell key and geometry, and either nothing (an empty section)
 //! or `n^3` samples. Each sample carries density, state, temperature, albedo
-//! in three bands, roughness, attenuation, and radiating temperature.
+//! in three bands, roughness, attenuation, radiating temperature, and
+//! occupancy. This is matter format version 3; versions 1 and 2 are retired
+//! and fail validation with [`codes::VERSION_RETIRED`].
 //!
 //! The wire format stores `f32` channels and so do [`Samples`], but every
 //! public constructor and accessor takes and returns the unit types from
@@ -34,7 +36,7 @@ use crate::units::{Attenuation, CubicMeters, Density, Kelvin, Kilograms, Meters,
 pub const MAGIC: [u8; 4] = [0x33, 0x47, 0x4D, 0x53];
 
 /// The matter section format version this module reads and writes.
-pub const VERSION: u16 = 2;
+pub const VERSION: u16 = 3;
 
 /// Length of the fixed header in bytes.
 pub const HEADER_LEN: usize = 72;
@@ -44,8 +46,8 @@ pub const MAX_RESOLUTION: u8 = 64;
 
 /// Bytes per sample in the uncompressed sample block: density 4, state 1,
 /// temperature 4, albedo 12, roughness 4, attenuation 4, radiating
-/// temperature 4.
-pub const BYTES_PER_SAMPLE: u64 = 33;
+/// temperature 4, occupancy 4.
+pub const BYTES_PER_SAMPLE: u64 = 37;
 
 /// Header flag bit 0: the section is empty.
 pub const FLAG_EMPTY: u16 = 1 << 0;
@@ -128,6 +130,12 @@ pub struct Sample {
     /// `temperature`; for a coarse sample it is what its outermost visible
     /// matter radiates at (`matter-format.md` section 3.3).
     pub radiating_temperature: Kelvin,
+    /// Share of the sub-cube's volume that the sample's matter fills: 1 for
+    /// a sample entirely inside matter, between 0 and 1 for one cut by the
+    /// boundary, 0 exactly for vacuum. The level set `occupancy = 0.5` of
+    /// solid and fluid samples is the surface (`matter-format.md`
+    /// section 3.3).
+    pub occupancy: Ratio,
 }
 
 impl Sample {
@@ -140,6 +148,7 @@ impl Sample {
         roughness: Ratio::new(0.0),
         attenuation: Attenuation::new(0.0),
         radiating_temperature: Kelvin::new(0.0),
+        occupancy: Ratio::new(0.0),
     };
 }
 
@@ -158,6 +167,7 @@ pub struct Samples {
     roughness: Vec<f32>,
     attenuation: Vec<f32>,
     radiating_temperature: Vec<f32>,
+    occupancy: Vec<f32>,
 }
 
 /// Converts a unit value to its stored `f32`, rounding to nearest.
@@ -176,6 +186,7 @@ impl Samples {
             roughness: Vec::with_capacity(count),
             attenuation: Vec::with_capacity(count),
             radiating_temperature: Vec::with_capacity(count),
+            occupancy: Vec::with_capacity(count),
         }
     }
 
@@ -189,6 +200,7 @@ impl Samples {
         self.attenuation.push(narrow(s.attenuation.value()));
         self.radiating_temperature
             .push(narrow(s.radiating_temperature.value()));
+        self.occupancy.push(narrow(s.occupancy.value()));
     }
 
     /// Builds `resolution^3` copies of `sample`.
@@ -244,6 +256,7 @@ impl Samples {
             roughness: Ratio::new(f64::from(self.roughness[index])),
             attenuation: Attenuation::new(f64::from(self.attenuation[index])),
             radiating_temperature: Kelvin::new(f64::from(self.radiating_temperature[index])),
+            occupancy: Ratio::new(f64::from(self.occupancy[index])),
         })
     }
 
@@ -261,6 +274,7 @@ impl Samples {
         self.roughness[index] = narrow(s.roughness.value());
         self.attenuation[index] = narrow(s.attenuation.value());
         self.radiating_temperature[index] = narrow(s.radiating_temperature.value());
+        self.occupancy[index] = narrow(s.occupancy.value());
     }
 
     /// Iterates over every sample in index order.
@@ -286,6 +300,15 @@ impl Samples {
         self.state[index]
     }
 
+    /// Occupancy of sample `index`, without building a whole [`Sample`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is out of bounds.
+    pub fn occupancy(&self, index: usize) -> Ratio {
+        Ratio::new(f64::from(self.occupancy[index]))
+    }
+
     /// Checks every channel and vacuum rule of section 3.3.
     fn check(&self) -> Result<(), ValidationError> {
         let states: Vec<u8> = self.state.iter().map(|s| s.as_u8()).collect();
@@ -297,6 +320,7 @@ impl Samples {
             roughness: &self.roughness,
             attenuation: &self.attenuation,
             radiating_temperature: &self.radiating_temperature,
+            occupancy: &self.occupancy,
         })
     }
 }
@@ -389,123 +413,174 @@ struct Channels<'a> {
     roughness: &'a [f32],
     attenuation: &'a [f32],
     radiating_temperature: &'a [f32],
+    occupancy: &'a [f32],
 }
 
-/// Builds a channel rule error naming the sample and channel.
-fn sample_error(code: u16, index: usize, channel: &str, problem: String) -> ValidationError {
-    ValidationError::new(code, format!("sample {index} channel {channel}: {problem}"))
-}
-
-/// Checks one `f32` channel with "finite, >= 0" or "finite, 0 to 1" rules.
-fn check_scalar(
-    values: &[f32],
-    channel: &str,
+/// The rule of one `f32` channel (section 3.3) and its two codes.
+#[derive(Copy, Clone)]
+struct Rule {
+    /// Channel name as it appears in a reason.
+    channel: &'static str,
+    /// Code for a NaN or infinite value.
     not_finite: u16,
+    /// Code for a value below 0, or above 1 when `unit_interval` is set.
     out_of_range: u16,
+    /// `true` for "finite, 0 to 1", `false` for "finite, >= 0".
     unit_interval: bool,
-) -> Result<(), ValidationError> {
-    for (i, &v) in values.iter().enumerate() {
-        check_value(v, i, channel, not_finite, out_of_range, unit_interval)?;
-    }
-    Ok(())
 }
 
-/// Checks one value: finiteness first, then the range.
+const DENSITY: Rule = Rule {
+    channel: "density",
+    not_finite: codes::DENSITY_NOT_FINITE,
+    out_of_range: codes::DENSITY_NEGATIVE,
+    unit_interval: false,
+};
+const TEMPERATURE: Rule = Rule {
+    channel: "temperature",
+    not_finite: codes::TEMPERATURE_NOT_FINITE,
+    out_of_range: codes::TEMPERATURE_NEGATIVE,
+    unit_interval: false,
+};
+const ALBEDO: Rule = Rule {
+    channel: "albedo",
+    not_finite: codes::ALBEDO_NOT_FINITE,
+    out_of_range: codes::ALBEDO_OUT_OF_RANGE,
+    unit_interval: true,
+};
+const ROUGHNESS: Rule = Rule {
+    channel: "roughness",
+    not_finite: codes::ROUGHNESS_NOT_FINITE,
+    out_of_range: codes::ROUGHNESS_OUT_OF_RANGE,
+    unit_interval: true,
+};
+const ATTENUATION: Rule = Rule {
+    channel: "attenuation",
+    not_finite: codes::ATTENUATION_NOT_FINITE,
+    out_of_range: codes::ATTENUATION_NEGATIVE,
+    unit_interval: false,
+};
+const RADIATING_TEMPERATURE: Rule = Rule {
+    channel: "radiating_temperature",
+    not_finite: codes::RADIATING_TEMPERATURE_NOT_FINITE,
+    out_of_range: codes::RADIATING_TEMPERATURE_NEGATIVE,
+    unit_interval: false,
+};
+const OCCUPANCY: Rule = Rule {
+    channel: "occupancy",
+    not_finite: codes::OCCUPANCY_NOT_FINITE,
+    out_of_range: codes::OCCUPANCY_OUT_OF_RANGE,
+    unit_interval: true,
+};
+
+/// Builds a channel rule error naming the sample, the channel, and for
+/// albedo the band. Only called once a check has failed, so the passing
+/// path formats nothing.
+#[cold]
+#[inline(never)]
+fn sample_error(
+    code: u16,
+    index: usize,
+    channel: &'static str,
+    band: Option<usize>,
+    problem: std::fmt::Arguments<'_>,
+) -> ValidationError {
+    let reason = match band {
+        Some(b) => format!("sample {index} channel {channel}[{b}]: {problem}"),
+        None => format!("sample {index} channel {channel}: {problem}"),
+    };
+    ValidationError::new(code, reason)
+}
+
+/// Builds the error for a value that breaks `rule`: finiteness first, then
+/// the range. Only called once [`passes`] has returned `false`.
+#[cold]
+#[inline(never)]
+fn value_error(v: f32, index: usize, rule: Rule, band: Option<usize>) -> ValidationError {
+    let ch = rule.channel;
+    if !v.is_finite() {
+        sample_error(
+            rule.not_finite,
+            index,
+            ch,
+            band,
+            format_args!("{v} is not finite"),
+        )
+    } else if v < 0.0 {
+        sample_error(
+            rule.out_of_range,
+            index,
+            ch,
+            band,
+            format_args!("{v} is negative"),
+        )
+    } else {
+        sample_error(
+            rule.out_of_range,
+            index,
+            ch,
+            band,
+            format_args!("{v} is greater than 1"),
+        )
+    }
+}
+
+/// Returns `true` if `v` satisfies the rule: finite and at least 0, and at
+/// most 1 for a unit interval channel. NaN fails every comparison, so it
+/// fails here too.
+#[inline(always)]
+fn passes(v: f32, unit_interval: bool) -> bool {
+    let max = if unit_interval { 1.0 } else { f32::MAX };
+    (0.0..=max).contains(&v)
+}
+
+/// Checks one value against `rule`, naming `band` in the reason if given.
+#[inline(always)]
 fn check_value(
     v: f32,
     index: usize,
-    channel: &str,
-    not_finite: u16,
-    out_of_range: u16,
-    unit_interval: bool,
+    rule: Rule,
+    band: Option<usize>,
 ) -> Result<(), ValidationError> {
-    if !v.is_finite() {
-        return Err(sample_error(
-            not_finite,
-            index,
-            channel,
-            format!("{v} is not finite"),
-        ));
+    if passes(v, rule.unit_interval) {
+        Ok(())
+    } else {
+        Err(value_error(v, index, rule, band))
     }
-    if v < 0.0 {
-        return Err(sample_error(
-            out_of_range,
-            index,
-            channel,
-            format!("{v} is negative"),
-        ));
-    }
-    if unit_interval && v > 1.0 {
-        return Err(sample_error(
-            out_of_range,
-            index,
-            channel,
-            format!("{v} is greater than 1"),
-        ));
+}
+
+/// Checks every value of one `f32` channel against `rule`, in index order.
+fn check_scalar(values: &[f32], rule: Rule) -> Result<(), ValidationError> {
+    for (i, &v) in values.iter().enumerate() {
+        check_value(v, i, rule, None)?;
     }
     Ok(())
 }
 
 /// Checks section 4 step 8: each channel's rule in wire order, then the
-/// vacuum rules sample by sample.
+/// vacuum and occupancy rules sample by sample.
 fn check_channels(c: &Channels<'_>) -> Result<(), ValidationError> {
-    check_scalar(
-        c.density,
-        "density",
-        codes::DENSITY_NOT_FINITE,
-        codes::DENSITY_NEGATIVE,
-        false,
-    )?;
+    check_scalar(c.density, DENSITY)?;
     for (i, &s) in c.state.iter().enumerate() {
         if State::from_u8(s).is_none() {
             return Err(sample_error(
                 codes::STATE_OUT_OF_RANGE,
                 i,
                 "state",
-                format!("{s} is not 0 to 4"),
+                None,
+                format_args!("{s} is not 0 to 4"),
             ));
         }
     }
-    check_scalar(
-        c.temperature,
-        "temperature",
-        codes::TEMPERATURE_NOT_FINITE,
-        codes::TEMPERATURE_NEGATIVE,
-        false,
-    )?;
+    check_scalar(c.temperature, TEMPERATURE)?;
     for (i, bands) in c.albedo.iter().enumerate() {
         for (b, &v) in bands.iter().enumerate() {
-            check_value(
-                v,
-                i,
-                &format!("albedo[{b}]"),
-                codes::ALBEDO_NOT_FINITE,
-                codes::ALBEDO_OUT_OF_RANGE,
-                true,
-            )?;
+            check_value(v, i, ALBEDO, Some(b))?;
         }
     }
-    check_scalar(
-        c.roughness,
-        "roughness",
-        codes::ROUGHNESS_NOT_FINITE,
-        codes::ROUGHNESS_OUT_OF_RANGE,
-        true,
-    )?;
-    check_scalar(
-        c.attenuation,
-        "attenuation",
-        codes::ATTENUATION_NOT_FINITE,
-        codes::ATTENUATION_NEGATIVE,
-        false,
-    )?;
-    check_scalar(
-        c.radiating_temperature,
-        "radiating_temperature",
-        codes::RADIATING_TEMPERATURE_NOT_FINITE,
-        codes::RADIATING_TEMPERATURE_NEGATIVE,
-        false,
-    )?;
+    check_scalar(c.roughness, ROUGHNESS)?;
+    check_scalar(c.attenuation, ATTENUATION)?;
+    check_scalar(c.radiating_temperature, RADIATING_TEMPERATURE)?;
+    check_scalar(c.occupancy, OCCUPANCY)?;
     for i in 0..c.density.len() {
         let vacuum_state = c.state[i] == State::Vacuum.as_u8();
         if c.density[i] != 0.0 {
@@ -514,7 +589,17 @@ fn check_channels(c: &Channels<'_>) -> Result<(), ValidationError> {
                     codes::MATTER_STATE_VACUUM,
                     i,
                     "state",
-                    format!("is vacuum but density is {}", c.density[i]),
+                    None,
+                    format_args!("is vacuum but density is {}", c.density[i]),
+                ));
+            }
+            if c.occupancy[i] == 0.0 {
+                return Err(sample_error(
+                    codes::MATTER_OCCUPANCY_ZERO,
+                    i,
+                    "occupancy",
+                    None,
+                    format_args!("is 0 but density is {}", c.density[i]),
                 ));
             }
             continue;
@@ -524,53 +609,68 @@ fn check_channels(c: &Channels<'_>) -> Result<(), ValidationError> {
                 codes::VACUUM_STATE_NOT_VACUUM,
                 i,
                 "state",
-                format!("is {} but density is 0", c.state[i]),
+                None,
+                format_args!("is {} but density is 0", c.state[i]),
             ));
         }
-        let zero_rules: [(f32, String, u16); 7] = [
+        let zero_rules: [(f32, &'static str, Option<usize>, u16); 8] = [
             (
                 c.temperature[i],
-                "temperature".into(),
+                "temperature",
+                None,
                 codes::VACUUM_TEMPERATURE_NONZERO,
             ),
             (
                 c.albedo[i][0],
-                "albedo[0]".into(),
+                "albedo",
+                Some(0),
                 codes::VACUUM_ALBEDO_NONZERO,
             ),
             (
                 c.albedo[i][1],
-                "albedo[1]".into(),
+                "albedo",
+                Some(1),
                 codes::VACUUM_ALBEDO_NONZERO,
             ),
             (
                 c.albedo[i][2],
-                "albedo[2]".into(),
+                "albedo",
+                Some(2),
                 codes::VACUUM_ALBEDO_NONZERO,
             ),
             (
                 c.roughness[i],
-                "roughness".into(),
+                "roughness",
+                None,
                 codes::VACUUM_ROUGHNESS_NONZERO,
             ),
             (
                 c.attenuation[i],
-                "attenuation".into(),
+                "attenuation",
+                None,
                 codes::VACUUM_ATTENUATION_NONZERO,
             ),
             (
                 c.radiating_temperature[i],
-                "radiating_temperature".into(),
+                "radiating_temperature",
+                None,
                 codes::VACUUM_RADIATING_TEMPERATURE_NONZERO,
             ),
+            (
+                c.occupancy[i],
+                "occupancy",
+                None,
+                codes::VACUUM_OCCUPANCY_NONZERO,
+            ),
         ];
-        for (v, channel, code) in zero_rules {
+        for (v, channel, band, code) in zero_rules {
             if v != 0.0 {
                 return Err(sample_error(
                     code,
                     i,
-                    &channel,
-                    format!("{v} is not 0 in a vacuum sample"),
+                    channel,
+                    band,
+                    format_args!("{v} is not 0 in a vacuum sample"),
                 ));
             }
         }
@@ -598,7 +698,7 @@ impl Section {
     /// Builds a non-empty section, running the same rules as [`decode`]:
     /// key (200), geometry (301 to 303), resolution 1 to 64 (411), exactly
     /// `resolution^3` samples (417), then every channel and vacuum rule
-    /// (501 to 526) in decoder order.
+    /// (501 to 529) in decoder order.
     pub fn new(
         key: CellKey,
         origin: Vec3,
@@ -718,6 +818,7 @@ fn sample_block(s: &Samples) -> Vec<u8> {
     put(&mut out, &s.roughness);
     put(&mut out, &s.attenuation);
     put(&mut out, &s.radiating_temperature);
+    put(&mut out, &s.occupancy);
     out
 }
 
@@ -851,6 +952,14 @@ pub fn decode(key: &CellKey, bytes: &[u8]) -> Result<Section, ValidationError> {
     }
     let version = u16_at(bytes, 4);
     if version != VERSION {
+        if (1..VERSION).contains(&version) {
+            return Err(ValidationError::new(
+                codes::VERSION_RETIRED,
+                format!(
+                    "format_version: {version} is retired (section 9); this library reads version {VERSION} only"
+                ),
+            ));
+        }
         return Err(ValidationError::new(
             codes::UNSUPPORTED_VERSION,
             format!("format_version: {version} is not {VERSION}"),
@@ -984,14 +1093,27 @@ pub fn decode(key: &CellKey, bytes: &[u8]) -> Result<Section, ValidationError> {
     let (temperature, rest) = rest.split_at(4 * count);
     let (albedo, rest) = rest.split_at(12 * count);
     let (roughness, rest) = rest.split_at(4 * count);
-    let (attenuation, radiating_temperature) = rest.split_at(4 * count);
+    let (attenuation, rest) = rest.split_at(4 * count);
+    let (radiating_temperature, occupancy) = rest.split_at(4 * count);
     let density = f32s(density);
     let temperature = f32s(temperature);
-    let albedo_flat = f32s(albedo);
-    let albedo: Vec<[f32; 3]> = albedo_flat.as_chunks::<3>().0.to_vec();
+    let albedo: Vec<[f32; 3]> = albedo
+        .as_chunks::<12>()
+        .0
+        .iter()
+        .map(|c| {
+            let (bands, _) = c.as_chunks::<4>();
+            [
+                f32::from_le_bytes(bands[0]),
+                f32::from_le_bytes(bands[1]),
+                f32::from_le_bytes(bands[2]),
+            ]
+        })
+        .collect();
     let roughness = f32s(roughness);
     let attenuation = f32s(attenuation);
     let radiating_temperature = f32s(radiating_temperature);
+    let occupancy = f32s(occupancy);
     check_channels(&Channels {
         density: &density,
         state,
@@ -1000,6 +1122,7 @@ pub fn decode(key: &CellKey, bytes: &[u8]) -> Result<Section, ValidationError> {
         roughness: &roughness,
         attenuation: &attenuation,
         radiating_temperature: &radiating_temperature,
+        occupancy: &occupancy,
     })?;
     let state = state
         .iter()
@@ -1018,6 +1141,7 @@ pub fn decode(key: &CellKey, bytes: &[u8]) -> Result<Section, ValidationError> {
             roughness,
             attenuation,
             radiating_temperature,
+            occupancy,
         }),
     })
 }
@@ -1039,11 +1163,12 @@ fn nearest(i: usize, coarse: usize, fine: usize) -> usize {
 ///
 /// All inputs must share key (802), origin (803), and edge (804); an empty
 /// list fails with 801. Every non-empty input is resampled to the finest
-/// resolution present by nearest (block) resampling. Then, per sample:
-/// densities add; the state is that of the densest contributor, the first in
+/// resolution present by nearest (block) resampling, occupancy by the same
+/// rule as density. Then, per sample: densities add; occupancies add,
+/// capped at 1; the state is that of the densest contributor, the first in
 /// input order on a tie; temperature, albedo, roughness, attenuation, and
-/// radiating temperature are density-weighted means. Sums run in `f64` in input order and the results
-/// are rounded to `f32`. A sample with total density 0 is vacuum with every
+/// radiating temperature are density-weighted means. Sums run in `f64` in
+/// input order and the results are rounded to `f32`. A sample with total density 0 is vacuum with every
 /// channel 0. Empty inputs contribute nothing, and if every input is empty
 /// the result is an empty section.
 ///
@@ -1094,6 +1219,7 @@ pub fn composite(sections: &[&Section]) -> Result<Section, ValidationError> {
                 let mut roughness = 0.0f64;
                 let mut attenuation = 0.0f64;
                 let mut radiating = 0.0f64;
+                let mut occupancy = 0.0f64;
                 for &(n, m) in &inputs {
                     let (cx, cy, cz) = (
                         nearest(x, n, fine),
@@ -1116,6 +1242,7 @@ pub fn composite(sections: &[&Section]) -> Result<Section, ValidationError> {
                     roughness += d * f64::from(m.roughness[ci]);
                     attenuation += d * f64::from(m.attenuation[ci]);
                     radiating += d * f64::from(m.radiating_temperature[ci]);
+                    occupancy += f64::from(m.occupancy[ci]);
                 }
                 match best {
                     None => out.push(Sample::VACUUM),
@@ -1127,6 +1254,7 @@ pub fn composite(sections: &[&Section]) -> Result<Section, ValidationError> {
                         out.roughness.push(narrow(roughness / total));
                         out.attenuation.push(narrow(attenuation / total));
                         out.radiating_temperature.push(narrow(radiating / total));
+                        out.occupancy.push(narrow(occupancy.min(1.0)));
                     }
                 }
             }
@@ -1161,6 +1289,7 @@ mod tests {
             roughness: Ratio::new(0.5),
             attenuation: Attenuation::new(0.125),
             radiating_temperature: Kelvin::new(temperature),
+            occupancy: Ratio::new(1.0),
         }
     }
 
@@ -1196,7 +1325,7 @@ mod tests {
         });
         let raw = encode(&s, Compression::None);
         let packed = encode(&s, Compression::Zstd);
-        assert_eq!(raw.len(), HEADER_LEN + 64 * 33);
+        assert_eq!(raw.len(), HEADER_LEN + 64 * 37);
         assert_ne!(raw, packed);
         assert_eq!(u16_at(&packed, 6), FLAG_ZSTD);
         assert_eq!(decode(&key(), &raw).unwrap(), s);
@@ -1224,16 +1353,16 @@ mod tests {
         let s = section(1, |_, _, _| matter(1.0, State::Gas, 10.0));
         let b = encode(&s, Compression::None);
         assert_eq!(&b[0..4], b"3GMS");
-        assert_eq!(u16_at(&b, 4), 2);
+        assert_eq!(u16_at(&b, 4), 3);
         assert_eq!(u64_at(&b, 8), 7);
         assert_eq!(b[16], 3);
         assert_eq!(b[17], 1);
         assert_eq!((u32_at(&b, 20), u32_at(&b, 24), u32_at(&b, 28)), (5, 2, 1));
         assert_eq!(f64_at(&b, 32), 2.0);
         assert_eq!(f64_at(&b, 56), 2.0);
-        assert_eq!(u64_at(&b, 64), 33);
+        assert_eq!(u64_at(&b, 64), 37);
         // Channel order: density, state, temperature, albedo, roughness,
-        // attenuation, radiating temperature.
+        // attenuation, radiating temperature, occupancy.
         assert_eq!(&b[72..76], &1.0f32.to_le_bytes());
         assert_eq!(b[76], 3);
         assert_eq!(&b[77..81], &10.0f32.to_le_bytes());
@@ -1242,6 +1371,82 @@ mod tests {
         assert_eq!(&b[93..97], &0.5f32.to_le_bytes());
         assert_eq!(&b[97..101], &0.125f32.to_le_bytes());
         assert_eq!(&b[101..105], &10.0f32.to_le_bytes());
+        assert_eq!(&b[105..109], &1.0f32.to_le_bytes());
+        assert_eq!(b.len(), 109);
+    }
+
+    #[test]
+    fn retired_and_unknown_versions() {
+        let s = section(1, |_, _, _| matter(1.0, State::Gas, 10.0));
+        let mut b = encode(&s, Compression::None);
+        for (v, code) in [
+            (1, codes::VERSION_RETIRED),
+            (2, codes::VERSION_RETIRED),
+            (0, codes::UNSUPPORTED_VERSION),
+            (4, codes::UNSUPPORTED_VERSION),
+        ] {
+            b[4..6].copy_from_slice(&u16::to_le_bytes(v));
+            let e = decode(&key(), &b).unwrap_err();
+            assert_eq!(e.code, code, "version {v}");
+        }
+        b[4..6].copy_from_slice(&2u16.to_le_bytes());
+        assert_eq!(
+            decode(&key(), &b).unwrap_err().reason,
+            "format_version: 2 is retired (section 9); this library reads version 3 only"
+        );
+    }
+
+    #[test]
+    fn occupancy_rules() {
+        let err = |s: Sample| {
+            Section::new(key(), origin(), edge(), 1, Samples::filled(1, s)).unwrap_err()
+        };
+        let mut s = matter(1.0, State::Solid, 1.0);
+        s.occupancy = Ratio::new(1.5);
+        assert_eq!(err(s).code, codes::OCCUPANCY_OUT_OF_RANGE);
+        s.occupancy = Ratio::new(-0.25);
+        assert_eq!(err(s).code, codes::OCCUPANCY_OUT_OF_RANGE);
+        s.occupancy = Ratio::new(f64::NAN);
+        assert_eq!(err(s).code, codes::OCCUPANCY_NOT_FINITE);
+        s.occupancy = Ratio::new(0.0);
+        let e = err(s);
+        assert_eq!(e.code, codes::MATTER_OCCUPANCY_ZERO);
+        assert_eq!(
+            e.reason,
+            "sample 0 channel occupancy: is 0 but density is 1"
+        );
+        s.occupancy = Ratio::new(-0.0);
+        assert_eq!(err(s).code, codes::MATTER_OCCUPANCY_ZERO);
+        let mut v = Sample::VACUUM;
+        v.occupancy = Ratio::new(0.5);
+        let e = err(v);
+        assert_eq!(e.code, codes::VACUUM_OCCUPANCY_NONZERO);
+        assert_eq!(
+            e.reason,
+            "sample 0 channel occupancy: 0.5 is not 0 in a vacuum sample"
+        );
+        // A partly filled boundary sample of any state is valid.
+        for st in [State::Solid, State::Fluid, State::Gas, State::Plasma] {
+            let mut m = matter(0.5, st, 1.0);
+            m.occupancy = Ratio::new(0.125);
+            assert!(Section::new(key(), origin(), edge(), 1, Samples::filled(1, m)).is_ok());
+        }
+    }
+
+    #[test]
+    fn reason_names_albedo_band() {
+        let mut s = matter(1.0, State::Fluid, 5.0);
+        s.albedo[1] = Ratio::new(2.0);
+        let e = Section::new(key(), origin(), edge(), 1, Samples::filled(1, s)).unwrap_err();
+        assert_eq!(e.reason, "sample 0 channel albedo[1]: 2 is greater than 1");
+        let mut v = Sample::VACUUM;
+        v.albedo[2] = Ratio::new(0.5);
+        let e = Section::new(key(), origin(), edge(), 1, Samples::filled(1, v)).unwrap_err();
+        assert_eq!(e.code, codes::VACUUM_ALBEDO_NONZERO);
+        assert_eq!(
+            e.reason,
+            "sample 0 channel albedo[2]: 0.5 is not 0 in a vacuum sample"
+        );
     }
 
     #[test]
@@ -1391,6 +1596,9 @@ mod tests {
         assert_eq!(m.state(0), State::Solid);
         assert_eq!(m.state(7), State::Fluid);
         assert_eq!(m.get(0).unwrap().temperature, Kelvin::new(280.0));
+        assert!(
+            (0..m.len()).all(|i| m.occupancy(i) == Ratio::new(1.0) || m.state(i) == State::Vacuum)
+        );
         // Order does not matter for disjoint inputs.
         assert_eq!(composite(&[&fluid, &solid]).unwrap(), c);
     }
@@ -1405,6 +1613,7 @@ mod tests {
             roughness: Ratio::new(0.0),
             attenuation: Attenuation::new(0.0),
             radiating_temperature: Kelvin::new(100.0),
+            occupancy: Ratio::new(0.25),
         });
         let b = section(1, |_, _, _| Sample {
             density: Density::new(3.0),
@@ -1414,6 +1623,7 @@ mod tests {
             roughness: Ratio::new(1.0),
             attenuation: Attenuation::new(4.0),
             radiating_temperature: Kelvin::new(500.0),
+            occupancy: Ratio::new(0.5),
         });
         let e = Section::empty(key(), origin(), edge()).unwrap();
         let c = composite(&[&a, &e, &b]).unwrap();
@@ -1424,6 +1634,10 @@ mod tests {
         assert_eq!(s.albedo, [Ratio::new(0.75); 3]);
         assert_eq!(s.roughness, Ratio::new(0.75));
         assert_eq!(s.attenuation, Attenuation::new(3.0));
+        assert_eq!(s.occupancy, Ratio::new(0.75));
+        // Occupancies add and cap at 1.
+        let c = composite(&[&a, &b, &b]).unwrap();
+        assert_eq!(c.samples().unwrap().occupancy(0), Ratio::new(1.0));
         // Tie: the first densest contributor wins.
         let g = section(1, |_, _, _| matter(3.0, State::Gas, 1.0));
         let c = composite(&[&g, &b]).unwrap();
@@ -1457,6 +1671,25 @@ mod tests {
             composite(&[&e, &other_edge]).unwrap_err().code,
             codes::COMPOSITE_EDGE_MISMATCH
         );
+    }
+
+    #[test]
+    fn composite_resamples_occupancy_like_density() {
+        // A coarse boundary sample, half filled, under a fine section that
+        // is vacuum everywhere: every fine sample it covers carries 0.5.
+        let coarse = section(1, |_, _, _| {
+            let mut s = matter(2.0, State::Solid, 300.0);
+            s.occupancy = Ratio::new(0.5);
+            s
+        });
+        let fine = section(2, |_, _, _| Sample::VACUUM);
+        let c = composite(&[&fine, &coarse]).unwrap();
+        let m = c.samples().unwrap();
+        assert_eq!(c.resolution(), 2);
+        for i in 0..8 {
+            assert_eq!(m.occupancy(i), Ratio::new(0.5));
+            assert_eq!(m.density(i), Density::new(2.0));
+        }
     }
 
     #[test]

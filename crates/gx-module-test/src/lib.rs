@@ -8,10 +8,15 @@
 //!   (`matter-format.md` section 5.3).
 //! - For a cell key it asks for one tile whose id is derived from the key
 //!   ([`tile_id`]), reads the cube's root extent, a base density, and a
-//!   temperature from it ([`TileParams`]), and returns a gas section whose
-//!   density varies with the global sample coordinates, the span index, and
-//!   the origin through [`gx_core::detmath`], so the bytes are identical on
-//!   every machine.
+//!   temperature from it ([`TileParams`]), and returns a gas section in
+//!   matter format version 3. The gas lies in layers ([`fill`]): in every
+//!   column of samples, it fills the lowest part of each period of
+//!   [`LAYER_PERIOD`] samples along z, a share that varies from column to
+//!   column. Each sample's occupancy is the exact share of its sub-cube the
+//!   gas fills, so a cell holds full, partly filled, and vacuum samples. The
+//!   gas density varies with the global sample coordinates, the span index,
+//!   and the origin through [`gx_core::detmath`], so the bytes are identical
+//!   on every machine.
 //!
 //! Build it for `wasm32-unknown-unknown` to get the module; the native
 //! `rlib` is what the conformance generator and the tests call.
@@ -93,6 +98,24 @@ fn global(cell_index: u32, n: u8, i: u32) -> f64 {
     ((u64::from(cell_index) * u64::from(n) + u64::from(i)) % 4096) as f64
 }
 
+/// Samples along z per gas layer period.
+pub const LAYER_PERIOD: u64 = 4;
+
+/// Height of the gas in one period of a column, in samples: between 1.25
+/// and 2.75 of the [`LAYER_PERIOD`], set by a wave over the column's global
+/// coordinates `gx`, `gy` and the request `phase`.
+pub fn fill(gx: f64, gy: f64, phase: f64) -> f64 {
+    let wave = detmath::sin(0.23 * gx + 0.31 * gy + phase) * detmath::cos(0.17 * gy);
+    2.0 + 0.75 * wave
+}
+
+/// Share of a sample's sub-cube the gas fills: the part of the sample's
+/// height, `layer` to `layer + 1` within its period, that lies below
+/// `fill`. Exactly 0 above the gas and exactly 1 inside it.
+pub fn occupancy(fill: f64, layer: u64) -> f64 {
+    (fill - layer as f64).clamp(0.0, 1.0)
+}
+
 /// The section for one cell.
 pub fn cell_section(req: &Request, cell: &CellKey, p: &TileParams) -> Result<Vec<u8>, String> {
     let g = cell.geometry(Meters::new(p.root_extent));
@@ -105,7 +128,14 @@ pub fn cell_section(req: &Request, cell: &CellKey, p: &TileParams) -> Result<Vec
         let gz = global(cell.z, n, z);
         let wave = detmath::sin(0.37 * gx + 0.53 * gy + 0.71 * gz + phase)
             * detmath::cos(0.29 * gx - 0.41 * gz);
-        let density = p.base_density * (1.25 + 0.75 * wave);
+        let layer = (u64::from(cell.z) * u64::from(n) + u64::from(z)) % LAYER_PERIOD;
+        let occupancy = occupancy(fill(gx, gy, phase), layer);
+        if occupancy == 0.0 {
+            return Sample::VACUUM;
+        }
+        // Mean density over the whole sub-cube: the gas's own density times
+        // the share it fills.
+        let density = p.base_density * (1.25 + 0.75 * wave) * occupancy;
         Sample {
             density: Density::new(density),
             state: State::Gas,
@@ -114,6 +144,7 @@ pub fn cell_section(req: &Request, cell: &CellKey, p: &TileParams) -> Result<Vec
             roughness: Ratio::new(0.75),
             attenuation: Attenuation::new(0.001),
             radiating_temperature: Kelvin::new(p.temperature),
+            occupancy: Ratio::new(occupancy),
         }
     });
     let section = Section::new(*cell, g.origin, g.edge, n, samples).map_err(|e| e.to_string())?;
@@ -162,6 +193,23 @@ mod tests {
     }
 
     #[test]
+    fn occupancy_is_the_filled_share() {
+        assert_eq!(occupancy(2.5, 0), 1.0);
+        assert_eq!(occupancy(2.5, 1), 1.0);
+        assert_eq!(occupancy(2.5, 2), 0.5);
+        assert_eq!(occupancy(2.5, 3), 0.0);
+        // Summed over a period, the occupancies are the fill height.
+        for f in [1.25, 1.5, 2.0, 2.75] {
+            let total: f64 = (0..LAYER_PERIOD).map(|k| occupancy(f, k)).sum();
+            assert_eq!(total, f);
+        }
+        for i in 0..64 {
+            let f = fill(f64::from(i), f64::from(3 * i), 0.7);
+            assert!((1.25..=2.75).contains(&f), "{f}");
+        }
+    }
+
+    #[test]
     fn tile_round_trip_and_checks() {
         let p = params();
         assert_eq!(TileParams::decode(&p.encode()), Ok(p));
@@ -192,6 +240,15 @@ mod tests {
         let section = matter::decode(&cell, &out).unwrap();
         assert_eq!(section.resolution(), resolution(3));
         assert!(section.mass().value() > 0.0);
+        assert_eq!(&out[4..6], &3u16.to_le_bytes());
+        // Full, partly filled, and vacuum samples all occur.
+        let samples = section.samples().unwrap();
+        let occ: Vec<f64> = (0..samples.len())
+            .map(|i| samples.occupancy(i).value())
+            .collect();
+        assert!(occ.contains(&1.0));
+        assert!(occ.contains(&0.0));
+        assert!(occ.iter().any(|&o| o > 0.0 && o < 1.0));
 
         let other = Request {
             span_index: 6,

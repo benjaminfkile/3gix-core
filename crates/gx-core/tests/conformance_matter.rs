@@ -66,6 +66,7 @@ fn valid_vectors_decode_and_match() {
     let mut every_state = false;
     let mut hot_plasma = false;
     let mut empty = false;
+    let mut any_partly_filled = false;
     for name in &names {
         let bytes = std::fs::read(root().join(format!("valid/{name}.bin"))).expect("bin");
         let text =
@@ -89,7 +90,8 @@ fn valid_vectors_decode_and_match() {
         assert_bits(name, "mass", &want["mass"], s.mass().value());
 
         let mut count = 0u64;
-        let mut sums = [0.0f64; 7];
+        let mut sums = [0.0f64; 9];
+        let mut partly_filled = false;
         let mut states = [0u64; 5];
         let mut hot = false;
         if let Some(samples) = s.samples() {
@@ -102,6 +104,9 @@ fn valid_vectors_decode_and_match() {
                 }
                 sums[5] += x.roughness.value();
                 sums[6] += x.attenuation.value();
+                sums[7] += x.radiating_temperature.value();
+                sums[8] += x.occupancy.value();
+                partly_filled |= x.occupancy.value() > 0.0 && x.occupancy.value() < 1.0;
                 states[usize::from(x.state.as_u8())] += 1;
                 hot |= x.state == State::Plasma
                     && x.temperature.value() > 5000.0
@@ -117,6 +122,13 @@ fn valid_vectors_decode_and_match() {
         }
         assert_bits(name, "roughness sum", &w["roughness"], sums[5]);
         assert_bits(name, "attenuation sum", &w["attenuation"], sums[6]);
+        assert_bits(
+            name,
+            "radiating temperature sum",
+            &w["radiating_temperature"],
+            sums[7],
+        );
+        assert_bits(name, "occupancy sum", &w["occupancy"], sums[8]);
         for st in State::ALL {
             assert_eq!(
                 states[usize::from(st.as_u8())],
@@ -130,8 +142,10 @@ fn valid_vectors_decode_and_match() {
         every_state |= states.iter().all(|&c| c > 0);
         hot_plasma |= hot;
         empty |= s.is_empty();
+        any_partly_filled |= partly_filled;
+        assert_eq!(&bytes[4..6], &3u16.to_le_bytes(), "{name}: format version");
     }
-    for r in [1, 2, 16, 64] {
+    for r in [1, 2, 3, 4, 8, 16, 64] {
         assert!(
             resolutions.contains(&r),
             "no valid vector at resolution {r}"
@@ -140,6 +154,7 @@ fn valid_vectors_decode_and_match() {
     assert!(every_state, "no valid vector with every state");
     assert!(hot_plasma, "no hot plasma vector with attenuation");
     assert!(empty, "no empty vector");
+    assert!(any_partly_filled, "no vector with a partly filled sample");
 }
 
 #[test]
@@ -209,6 +224,7 @@ fn invalid_vectors_fail_with_their_code() {
         codes::HEADER_TOO_SHORT,
         codes::BAD_MAGIC,
         codes::UNSUPPORTED_VERSION,
+        codes::VERSION_RETIRED,
         codes::UNKNOWN_FLAGS,
         codes::RESERVED_NONZERO,
         codes::FRAME_ID_MISMATCH,
@@ -242,6 +258,8 @@ fn invalid_vectors_fail_with_their_code() {
         codes::ATTENUATION_NEGATIVE,
         codes::RADIATING_TEMPERATURE_NOT_FINITE,
         codes::RADIATING_TEMPERATURE_NEGATIVE,
+        codes::OCCUPANCY_NOT_FINITE,
+        codes::OCCUPANCY_OUT_OF_RANGE,
         codes::VACUUM_STATE_NOT_VACUUM,
         codes::MATTER_STATE_VACUUM,
         codes::VACUUM_TEMPERATURE_NONZERO,
@@ -249,6 +267,8 @@ fn invalid_vectors_fail_with_their_code() {
         codes::VACUUM_ROUGHNESS_NONZERO,
         codes::VACUUM_ATTENUATION_NONZERO,
         codes::VACUUM_RADIATING_TEMPERATURE_NONZERO,
+        codes::VACUUM_OCCUPANCY_NONZERO,
+        codes::MATTER_OCCUPANCY_ZERO,
     ];
     let want: BTreeSet<u16> = triggerable.into_iter().collect();
     assert_eq!(

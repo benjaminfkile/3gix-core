@@ -55,6 +55,14 @@
       "bits": "0x3f23a92a40000000",
       "decimal": "1.500000071246177e-4"
     },
+    "occupancy": {
+      "bits": "0x3ff0000000000000",
+      "decimal": "1e0"
+    },
+    "radiating_temperature": {
+      "bits": "0x40cd4c0000000000",
+      "decimal": "1.5e4"
+    },
     "roughness": {
       "bits": "0x0000000000000000",
       "decimal": "0e0"

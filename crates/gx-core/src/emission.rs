@@ -224,6 +224,7 @@ mod tests {
             roughness: Ratio::new(0.0),
             attenuation: Attenuation::new(att),
             radiating_temperature: Kelvin::new(temperature),
+            occupancy: Ratio::new(1.0),
         }
     }
 

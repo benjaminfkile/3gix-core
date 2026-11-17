@@ -7,9 +7,11 @@
 //! - [`key`]: chunk key parsing and printing, and cell geometry
 //!   (`matter-format.md` section 2, chunk keys, and section 3.1, cell
 //!   geometry).
-//! - [`matter`]: matter section encode, decode, validate, and composite
-//!   (`matter-format.md` section 3, matter section, with 3.5 compositing, and
-//!   section 4, validation, for matter sections).
+//! - [`matter`]: matter section format version 3 encode, decode, validate,
+//!   and composite, with the occupancy channel that places surfaces
+//!   (`matter-format.md` section 3, matter section, with 3.3 sample block,
+//!   3.5 compositing, and section 4, validation, for matter sections).
+//!   Versions 1 and 2 are retired and rejected.
 //! - [`registry`]: frame registry format version 2 encode, decode, and
 //!   validate, and the union of a build's registries as a
 //!   [`registry::FrameTree`] (`matter-format.md` section 5, frame registry:
@@ -34,7 +36,7 @@
 //!   retarded time and state a frame is drawn at, and the retarded position
 //!   a frame is lit from (`space-model.md` section 6.4).
 //! - [`radiance`]: blackbody radiance per wavelength and per band from
-//!   temperature, with the three fixed bands of format version 1
+//!   temperature, with the three fixed bands of the matter format
 //!   (`space-model.md` sections 1 and 2, `matter-format.md` section 3.3,
 //!   derived quantities).
 //! - [`emission`]: the hot matter of a section summarized as one emitter
@@ -108,8 +110,9 @@ pub use validate::validate;
 
 use error::{codes, ValidationError};
 
-/// Version of the matter section format this library reads and writes. The
-/// frame registry has its own version, [`registry::VERSION`] (2).
+/// Version of the matter section format this library reads and writes, 3
+/// ([`matter::VERSION`]). The frame registry has its own version,
+/// [`registry::VERSION`] (2).
 pub const FORMAT_VERSION: u32 = matter::VERSION as u32;
 
 /// Returns the matter format version, [`FORMAT_VERSION`].
@@ -586,8 +589,8 @@ mod tests {
     }
 
     #[test]
-    fn format_version_is_one() {
-        assert_eq!(gx_format_version(), 2);
+    fn format_version_is_three() {
+        assert_eq!(gx_format_version(), 3);
     }
 
     #[test]

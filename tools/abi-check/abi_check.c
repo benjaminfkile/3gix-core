@@ -6,8 +6,9 @@
  *                  REGISTRY_V1_VECTOR MANIFEST_VECTOR BAD_MANIFEST_VECTOR
  *
  * Calls gx_format_version, then gx_validate with a valid registry vector
- * (registry format version 2), a valid matter vector, the registry vector
- * under a cell key, and a retired version 1 registry, and checks the return
+ * (registry format version 2), a valid matter vector (matter format
+ * version 3), the registry vector under a cell key, the matter vector with a
+ * retired version 2 header, and a retired version 1 registry, and checks the return
  * codes, the reason, the buffer truncation, and gx_error_name. Then checks
  * gx_manifest_validate on a valid and an unsorted manifest, and
  * gx_section_address against two cases of conformance/address/cases.json.
@@ -121,7 +122,7 @@ int main(int argc, char** argv) {
     const char* mat_key = argv[3];
     char err[256];
 
-    check(gx_format_version() == 2, "gx_format_version() == 2");
+    check(gx_format_version() == 3, "gx_format_version() == 3");
 
     memset(err, 0x7f, sizeof err);
     check(validate("registry", reg, reg_len, err, sizeof err) == 0,
@@ -156,6 +157,24 @@ int main(int argc, char** argv) {
           "null bytes with non-zero length returns 106");
     check(validate("not-a-key", mat, mat_len, err, sizeof err) == 206,
           "malformed key returns 206");
+
+    /* Matter format version 3: a version 2 header is retired. */
+    uint8_t* mat2 = malloc(mat_len);
+    check(mat2 != NULL, "allocate a copy of the matter vector");
+    if (mat2 != NULL) {
+        memcpy(mat2, mat, mat_len);
+        mat2[4] = 2;
+        mat2[5] = 0;
+        rc = validate(mat_key, mat2, mat_len, err, sizeof err);
+        printf("      version 2 matter section: %d %s: %s\n", (int)rc,
+               gx_error_name(rc), err);
+        check(rc == 107, "version 2 matter section returns 107");
+        check(strcmp(gx_error_name(rc), "VERSION_RETIRED") == 0,
+              "gx_error_name names the retired matter version");
+        check(strstr(err, "retired") != NULL,
+              "the reason says the matter version is retired");
+        free(mat2);
+    }
 
     const char* unknown = gx_error_name(0);
     check(unknown != NULL && unknown[0] == '\0', "unknown code name is empty");

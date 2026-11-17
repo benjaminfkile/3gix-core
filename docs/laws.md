@@ -4,7 +4,7 @@ Every law function in `gx-core`, its units, and its determinism contract. The la
 
 ## Bands
 
-Format version 1 fixes three wavelength bands, `gx_core::radiance::BAND_EDGES = [700e-9, 600e-9, 500e-9, 400e-9]` meters, long to short wavelength:
+The matter format fixes three wavelength bands, `gx_core::radiance::BAND_EDGES = [700e-9, 600e-9, 500e-9, 400e-9]` meters, long to short wavelength:
 
 | Band | From | To |
 |---|---|---|

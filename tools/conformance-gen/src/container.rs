@@ -6,7 +6,8 @@
 //!   `matter/valid/res16-zstd.bin` in that order, under different layer ids.
 //!   `valid/matter-chunk.json` gives the key, the section count, each
 //!   section's source file, resolution, and mass, the sum of the masses in
-//!   table order, and the resolution and mass of their composite.
+//!   table order, and the resolution, mass, and occupancy sum of their
+//!   composite.
 //! - `valid/registry-chunk.bin` holds `registry/union/valid-a.bin` and
 //!   `registry/union/valid-b.bin`. `valid/registry-chunk.json` gives the
 //!   section count, each registry's source file and frame count, and the root
@@ -68,6 +69,7 @@ fn valid() -> Vec<File> {
         "composite": {
             "resolution": composite.resolution(),
             "mass": number(composite.mass().value()),
+            "occupancy_sum": number(occupancy_sum(&composite)),
         },
     });
 
@@ -223,4 +225,10 @@ pub fn files() -> Vec<File> {
     let mut out = valid();
     out.extend(invalid());
     out
+}
+
+/// Sum of the occupancies of a section's samples, in index order.
+fn occupancy_sum(s: &matter::Section) -> f64 {
+    s.samples()
+        .map_or(0.0, |m| m.iter().map(|x| x.occupancy.value()).sum())
 }

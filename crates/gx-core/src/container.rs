@@ -292,6 +292,7 @@ mod tests {
             s.density = crate::units::Density::new(density);
             s.state = crate::matter::State::Solid;
             s.temperature = crate::units::Kelvin::new(300.0);
+            s.occupancy = crate::units::Ratio::new(1.0);
         }
         let section = Section::new(key(), g.origin, g.edge, 1, Samples::filled(1, s)).unwrap();
         encode(&section, Compression::None)

@@ -1,15 +1,19 @@
 {
   "composite": {
     "mass": {
-      "bits": "0x43dc3bf6e3fdd665",
-      "decimal": "8.137964463058425e18"
+      "bits": "0x43dc3f0473467a70",
+      "decimal": "8.141401798979731e18"
+    },
+    "occupancy_sum": {
+      "bits": "0x40ac34b79c5c8000",
+      "decimal": "3.6103586148172617e3"
     },
     "resolution": 16
   },
   "key": "4-5-17-3-30",
   "mass_sum": {
-    "bits": "0x43dc3bf6e427bb7e",
-    "decimal": "8.137964465869945e18"
+    "bits": "0x43dc3f0473a85e98",
+    "decimal": "8.141401805549101e18"
   },
   "section_count": 2,
   "sections": [
@@ -23,8 +27,8 @@
     },
     {
       "mass": {
-        "bits": "0x43d121a8f49eea2f",
-        "decimal": "4.937814165871443e18"
+        "bits": "0x43d124b6841f8d49",
+        "decimal": "4.941251505550599e18"
       },
       "resolution": 16,
       "source": "matter/valid/res16-zstd.bin"
