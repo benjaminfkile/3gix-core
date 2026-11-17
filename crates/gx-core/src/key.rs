@@ -35,6 +35,106 @@ pub enum ChunkKey {
     Registry,
     /// One cell of one frame's octree.
     Cell(CellKey),
+    /// One tile of one frame's surface (`matter-format.md` section 10).
+    Surface(SurfaceKey),
+}
+
+/// Prefix of a surface tile key: `s-frame_id-face-level-x-y`.
+pub const SURFACE_PREFIX: &str = "s-";
+
+/// Largest permitted surface tile level.
+pub const MAX_SURFACE_LEVEL: u8 = 24;
+
+/// Faces of the cube a surface is mapped from (`matter-format.md` 10.1).
+pub const SURFACE_FACES: u8 = 6;
+
+/// The address of one surface tile: a frame, a cube face, a level of the
+/// face's quadtree, and the tile's column and row at that level.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct SurfaceKey {
+    /// The frame whose surface this is.
+    pub frame_id: u64,
+    /// Cube face, 0 to 5 (`matter-format.md` 10.1).
+    pub face: u8,
+    /// Quadtree level, 0 to [`MAX_SURFACE_LEVEL`]; level `l` has `2^l`
+    /// tiles per face side.
+    pub level: u8,
+    /// Column, below `2^level`.
+    pub x: u32,
+    /// Row, below `2^level`.
+    pub y: u32,
+}
+
+impl SurfaceKey {
+    /// A checked surface key.
+    pub fn new(frame_id: u64, face: u8, level: u8, x: u32, y: u32) -> Result<SurfaceKey, KeyError> {
+        if face >= SURFACE_FACES {
+            return Err(KeyError::FaceOutOfRange {
+                face: u64::from(face),
+            });
+        }
+        if level > MAX_SURFACE_LEVEL {
+            return Err(KeyError::DepthOutOfRange {
+                depth: u64::from(level),
+            });
+        }
+        for (part, v) in [(4, x), (5, y)] {
+            if u64::from(v) >= 1u64 << level {
+                return Err(KeyError::CoordinateOutOfRange {
+                    part,
+                    value: v,
+                    depth: level,
+                });
+            }
+        }
+        Ok(SurfaceKey {
+            frame_id,
+            face,
+            level,
+            x,
+            y,
+        })
+    }
+
+    /// The tile one level up holding this one, `None` at level 0.
+    pub fn parent(&self) -> Option<SurfaceKey> {
+        (self.level > 0).then(|| SurfaceKey {
+            level: self.level - 1,
+            x: self.x / 2,
+            y: self.y / 2,
+            ..*self
+        })
+    }
+
+    /// The four tiles one level down, `(x, y)` order: (0,0), (1,0), (0,1),
+    /// (1,1); `None` at [`MAX_SURFACE_LEVEL`].
+    pub fn children(&self) -> Option<[SurfaceKey; 4]> {
+        (self.level < MAX_SURFACE_LEVEL).then(|| {
+            core::array::from_fn(|i| SurfaceKey {
+                level: self.level + 1,
+                x: 2 * self.x + (i as u32 & 1),
+                y: 2 * self.y + (i as u32 >> 1),
+                ..*self
+            })
+        })
+    }
+}
+
+impl fmt::Display for SurfaceKey {
+    /// Writes `s-frame_id-face-level-x-y` in decimal.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{SURFACE_PREFIX}{}-{}-{}-{}-{}",
+            self.frame_id, self.face, self.level, self.x, self.y
+        )
+    }
+}
+
+impl From<SurfaceKey> for ChunkKey {
+    fn from(s: SurfaceKey) -> Self {
+        ChunkKey::Surface(s)
+    }
 }
 
 /// The address of one cell: a frame, an octree depth, and integer coordinates
@@ -101,7 +201,13 @@ pub enum KeyError {
         /// Index of the offending part.
         part: usize,
     },
-    /// `depth` is greater than [`MAX_DEPTH`].
+    /// A surface key's face is not below [`SURFACE_FACES`].
+    FaceOutOfRange {
+        /// The face found.
+        face: u64,
+    },
+    /// `depth` is greater than [`MAX_DEPTH`] (or a surface level greater
+    /// than [`MAX_SURFACE_LEVEL`]).
     DepthOutOfRange {
         /// The depth found.
         depth: u64,
@@ -130,6 +236,7 @@ impl fmt::Display for KeyError {
             KeyError::EmptyPart { part } => write!(f, "part {part} is empty"),
             KeyError::LeadingZero { part } => write!(f, "part {part} has a leading zero"),
             KeyError::Overflow { part } => write!(f, "part {part} overflows"),
+            KeyError::FaceOutOfRange { face } => write!(f, "face {face} is not below 6"),
             KeyError::DepthOutOfRange { depth } => {
                 write!(f, "depth {depth} exceeds {MAX_DEPTH}")
             }
@@ -173,6 +280,30 @@ impl FromStr for ChunkKey {
         }
         if s == REGISTRY_KEY {
             return Ok(ChunkKey::Registry);
+        }
+        if let Some(rest) = s.strip_prefix(SURFACE_PREFIX) {
+            if let Some(offset) = rest
+                .bytes()
+                .position(|b| !(b.is_ascii_digit() || b == b'-'))
+            {
+                return Err(KeyError::InvalidCharacter {
+                    offset: offset + SURFACE_PREFIX.len(),
+                });
+            }
+            let found = rest.split('-').count();
+            if found != CELL_PARTS {
+                return Err(KeyError::PartCount { found });
+            }
+            let mut v = [0u64; CELL_PARTS];
+            for (part, text) in rest.split('-').enumerate() {
+                v[part] = parse_part(text, part)?;
+            }
+            let face = u8::try_from(v[1]).map_err(|_| KeyError::FaceOutOfRange { face: v[1] })?;
+            let level =
+                u8::try_from(v[2]).map_err(|_| KeyError::DepthOutOfRange { depth: v[2] })?;
+            let x = u32::try_from(v[3]).map_err(|_| KeyError::Overflow { part: 3 })?;
+            let y = u32::try_from(v[4]).map_err(|_| KeyError::Overflow { part: 4 })?;
+            return SurfaceKey::new(v[0], face, level, x, y).map(ChunkKey::Surface);
         }
         if let Some(offset) = s.bytes().position(|b| !(b.is_ascii_digit() || b == b'-')) {
             return Err(KeyError::InvalidCharacter { offset });
@@ -219,6 +350,7 @@ impl fmt::Display for ChunkKey {
         match self {
             ChunkKey::Registry => f.write_str(REGISTRY_KEY),
             ChunkKey::Cell(c) => fmt::Display::fmt(c, f),
+            ChunkKey::Surface(t) => fmt::Display::fmt(t, f),
         }
     }
 }

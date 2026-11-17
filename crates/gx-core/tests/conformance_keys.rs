@@ -53,6 +53,9 @@ fn every_vector_matches_the_parser() {
                     assert_eq!(c, expected, "fields of {key:?}");
                     assert!(c.is_valid());
                 }
+                // The key vectors list registry and cell keys; surface
+                // keys are tested in `surface`.
+                ChunkKey::Surface(t) => panic!("{key:?} parsed as a surface key {t:?}"),
             }
         } else {
             invalid += 1;

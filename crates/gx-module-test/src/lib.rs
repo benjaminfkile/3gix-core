@@ -161,6 +161,8 @@ impl Module for TestModule {
         match &req.key {
             ChunkKey::Registry => Vec::new(),
             ChunkKey::Cell(cell) => vec![tile_id(cell)],
+            // No surface: nothing to read.
+            ChunkKey::Surface(_) => Vec::new(),
         }
     }
 
@@ -172,6 +174,8 @@ impl Module for TestModule {
                 let bytes = tiles.get(id).ok_or_else(|| format!("tile {id} missing"))?;
                 cell_section(req, cell, &TileParams::decode(bytes)?)
             }
+            // This module emits no surface tiles (`matter-format.md` 10.4).
+            ChunkKey::Surface(tile) => Ok(gx_core::surface::encode_empty(tile)),
         }
     }
 }

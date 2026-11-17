@@ -420,6 +420,33 @@ pub mod codes {
         SPAN_TIME_BEFORE_ORIGIN = 961;
         /// The C ABI was given a null `module32` or `out32` pointer.
         ADDRESS_POINTER_NULL = 962;
+
+        // 980 to 999: surface tiles (`matter-format.md` section 10).
+
+        /// Fewer bytes than the 64-byte surface tile header.
+        SURFACE_TOO_SHORT = 980;
+        /// The first four bytes are not the surface tile magic `3GSF`.
+        SURFACE_BAD_MAGIC = 981;
+        /// `format_version` is not the surface tile version this library reads.
+        SURFACE_BAD_VERSION = 982;
+        /// A reserved field or flag bit is not 0.
+        SURFACE_RESERVED_NONZERO = 983;
+        /// The header's frame, face, level, or tile coordinates differ from
+        /// the key.
+        SURFACE_KEY_MISMATCH = 984;
+        /// A reference radius is not finite and positive, or the polar radius
+        /// exceeds the equatorial one by more than a factor of two either way.
+        SURFACE_RADIUS = 985;
+        /// An EMPTY tile has radii, a block length, ZSTD, or bytes after the
+        /// header.
+        SURFACE_EMPTY_INVALID = 986;
+        /// `block_len` is not the block length of section 10.3, or the bytes
+        /// after the header are not exactly that block (or one zstd frame of
+        /// it).
+        SURFACE_BLOCK_LENGTH = 987;
+        /// A height is not finite, or reaches below the reference shape's
+        /// center; or a temperature is not finite and at least 0.
+        SURFACE_VALUE = 988;
     }
 }
 

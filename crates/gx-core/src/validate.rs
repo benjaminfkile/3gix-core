@@ -7,7 +7,7 @@
 
 use crate::error::{codes, ValidationError};
 use crate::key::ChunkKey;
-use crate::{matter, registry};
+use crate::{matter, registry, surface};
 
 /// Validates `bytes` submitted under the chunk key string `key`.
 ///
@@ -24,6 +24,7 @@ pub fn validate(key: &str, bytes: &[u8]) -> Result<(), ValidationError> {
         )),
         Ok(ChunkKey::Registry) => registry::validate(bytes),
         Ok(ChunkKey::Cell(cell)) => matter::validate(&cell, bytes),
+        Ok(ChunkKey::Surface(tile)) => surface::validate(&tile, bytes),
     }
 }
 

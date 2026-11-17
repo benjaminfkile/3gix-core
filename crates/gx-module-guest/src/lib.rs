@@ -366,6 +366,7 @@ mod tests {
             match req.key {
                 ChunkKey::Registry => Vec::new(),
                 ChunkKey::Cell(c) => vec![c.frame_id, c.frame_id + 1],
+                ChunkKey::Surface(_) => Vec::new(),
             }
         }
         fn compile(req: &Request, tiles: &Tiles) -> Result<Vec<u8>, String> {
@@ -379,6 +380,7 @@ mod tests {
                     let s = Section::empty(c, g.origin, g.edge).map_err(|e| e.to_string())?;
                     Ok(matter::encode(&s, Compression::None))
                 }
+                ChunkKey::Surface(t) => Ok(gx_core::surface::encode_empty(&t)),
             }
         }
     }

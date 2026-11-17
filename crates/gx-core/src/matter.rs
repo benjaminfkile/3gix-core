@@ -881,7 +881,7 @@ fn f32s(b: &[u8]) -> Vec<f32> {
 
 /// Decompresses the payload after the header when ZSTD is set: exactly one
 /// zstd frame that yields exactly `block_len` bytes.
-fn decompress(payload: &[u8], block_len: usize) -> Result<Vec<u8>, ValidationError> {
+pub(crate) fn decompress(payload: &[u8], block_len: usize) -> Result<Vec<u8>, ValidationError> {
     let frame_len = zstd::zstd_safe::find_frame_compressed_size(payload).map_err(|e| {
         ValidationError::new(
             codes::ZSTD_FRAME_INVALID,

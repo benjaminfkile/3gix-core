@@ -79,6 +79,7 @@ fn address_cases_match() {
             ChunkKey::Cell(cell) => {
                 depths.insert(cell.depth);
             }
+            ChunkKey::Surface(_) => {}
         }
         with_manifest += usize::from(manifest.is_some());
         origin_on += usize::from(uses_origin);

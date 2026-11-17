@@ -102,6 +102,7 @@ pub mod radiance;
 pub mod registry;
 pub mod rotation;
 pub mod sha256;
+pub mod surface;
 pub mod timescale;
 pub mod units;
 pub mod validate;

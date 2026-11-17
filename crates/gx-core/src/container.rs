@@ -264,6 +264,12 @@ pub fn chunk_mass(key: &str, bytes: &[u8]) -> Result<Kilograms, ValidationError>
                 "key: a cell key is required, not registry",
             ))
         }
+        Ok(ChunkKey::Surface(_)) => {
+            return Err(ValidationError::new(
+                codes::KEY_NOT_CELL,
+                "key: a cell key is required, not a surface tile",
+            ))
+        }
         Ok(ChunkKey::Cell(c)) => c,
     };
     let sections = decode_chunk(&cell, bytes)?;
