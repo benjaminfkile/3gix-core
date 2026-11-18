@@ -1,7 +1,8 @@
 // Runs the WebAssembly build under Node (V8, standing in for the browser)
 // against the conformance vectors the native build is tested with, so the two
 // must agree byte for byte: section addresses, UTC to TDB bit patterns and
-// back, source manifest validation, matter format version 3 validation
+// back, source manifest validation, epoch index validation and the epoch
+// rule cases, matter format version 3 validation
 // (every valid and invalid matter vector, and the mass of the matter
 // container), registry format version 2 validation, the integrator's state bytes for the integrate vectors, and
 // the retarded state bytes for the light vectors.
@@ -85,6 +86,26 @@ for (const name of ["empty", "one", "three"]) {
 for (const [file, want] of Object.entries(json("manifest/invalid/index.json").vectors)) {
   const got = code(() => gx.manifest_validate(bin(`manifest/invalid/${file}`)));
   check(got === want, `manifest ${file}: ${got}`);
+}
+
+for (const name of ["daily", "empty", "widest"]) {
+  const bytes = bin(`epochs/valid/${name}.bin`);
+  check(code(() => gx.epochs_validate(bytes)) === 0, `epochs ${name}`);
+  for (const c of json(`epochs/valid/${name}.json`).cases) {
+    const what = `epochs ${name}: span ${c.span_seconds} s, index ${c.span_index}`;
+    const run = () => gx.epochs_manifest(bytes, BigInt(c.span_seconds), BigInt(c.span_index));
+    if (c.code !== undefined) {
+      const got = code(run);
+      check(got === c.code, `${what}: ${got}`);
+    } else {
+      const got = run();
+      check((got ?? null) === c.manifest, `${what}: ${got}`);
+    }
+  }
+}
+for (const [file, want] of Object.entries(json("epochs/invalid/index.json").vectors)) {
+  const got = code(() => gx.epochs_validate(bin(`epochs/invalid/${file}`)));
+  check(got === want, `epochs ${file}: ${got}`);
 }
 
 check(gx.format_version() === 3, `format_version is ${gx.format_version()}`);

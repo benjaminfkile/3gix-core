@@ -24,6 +24,8 @@
 //! | 900 to 929 | source manifest (`client-compute.md` section 5.1) |
 //! | 930 to 959 | module request, tile, and source id bytes (`client-compute.md` section 4) |
 //! | 960 to 979 | section addresses and span indices (`client-compute.md` sections 2.4 and 3) |
+//! | 980 to 999 | surface tiles (`matter-format.md` section 10) |
+//! | 1000 to 1019 | epoch indexes and the epoch rule (`client-compute.md` section 5.4) |
 //!
 //! The full table with the check order lives in `docs/errors.md`. A code
 //! never changes meaning once published. New rules get new codes.
@@ -452,6 +454,35 @@ pub mod codes {
         SURFACE_FLOOR = 989;
         /// A height or parent height is below `height_floor`.
         SURFACE_BELOW_FLOOR = 990;
+
+        // 1000 to 1019: epoch indexes and the epoch rule
+        // (`client-compute.md` section 5.4). Checked by `epochs`.
+
+        /// Fewer than 20 bytes, so there is no complete epoch index header.
+        EPOCHS_HEADER_TOO_SHORT = 1001;
+        /// The epoch index magic is not `3GXE` (`0x33 0x47 0x58 0x45`).
+        EPOCHS_BAD_MAGIC = 1002;
+        /// Epoch index `version` is not 1.
+        EPOCHS_UNSUPPORTED_VERSION = 1003;
+        /// The reserved `u16` at epoch index offset 6 is not 0.
+        EPOCHS_RESERVED_NONZERO = 1004;
+        /// `epoch seconds` is 0.
+        EPOCHS_ZERO_EPOCH_SECONDS = 1005;
+        /// The input length is not exactly `20 + 40 * entry_count`.
+        EPOCHS_LENGTH_MISMATCH = 1006;
+        /// An entry's epoch index is not greater than the previous entry's:
+        /// entries are not strictly ascending.
+        EPOCHS_NOT_ASCENDING = 1007;
+        /// More entries than a `u32` `entry_count` can hold were given to the
+        /// Rust constructor. Reachable only through the Rust API.
+        EPOCHS_TOO_MANY_ENTRIES = 1008;
+        /// The epoch rule was asked for a layer with `span_seconds` 0.
+        EPOCHS_SPAN_SECONDS_ZERO = 1009;
+        /// The epoch length is not a whole multiple of the layer's
+        /// `span_seconds`, so a span could straddle two epochs.
+        EPOCHS_SPAN_NOT_DIVISOR = 1010;
+        /// The C ABI was given a null `out32` pointer.
+        EPOCHS_POINTER_NULL = 1011;
     }
 }
 

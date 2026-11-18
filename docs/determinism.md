@@ -16,11 +16,11 @@ The hub's promise is that one fingerprint means one byte sequence. Every functio
 - Every `f64` is written with its exact bit pattern, including negative zero.
 - The conformance generator builds orientations from rational unit quaternions, so no platform trigonometry enters the vectors.
 
-## Hashes, addresses, manifests, and module bytes
+## Hashes, addresses, manifests, epoch indexes, and module bytes
 
 - SHA-256 is written out in `gx_core::sha256` with integer operations only, no platform intrinsics and no dependency, so every target hashes with the same code.
 - A section address is SHA-256 over a fixed little-endian preimage (`client-compute.md` section 3), and is written as lowercase hex. The chunk key in it is the canonical text form, which parsing and printing round trip exactly.
-- Manifests, request bytes, tile bytes, and source id lists are fixed little-endian layouts. Manifest entries are always in id order (`Manifest::new` sorts, `decode` rejects unsorted input), and tiles and source ids must ascend, so there is one byte form per value.
+- Manifests, epoch indexes, request bytes, tile bytes, and source id lists are fixed little-endian layouts. Epoch index entries are always in epoch order (`EpochIndex::new` sorts, `decode` rejects unsorted input), and the epoch rule divides in `u128`, so it never overflows or rounds differently. Manifest entries are always in id order (`Manifest::new` sorts, `decode` rejects unsorted input), and tiles and source ids must ascend, so there is one byte form per value.
 
 ## Time scale conversion
 
@@ -45,12 +45,12 @@ Decoding is not affected: any conforming zstd decoder reads any conforming frame
 
 ## The proof
 
-`tools/conformance-gen` regenerates `conformance/matter/`, `conformance/registry/`, `conformance/container/`, `conformance/address/`, `conformance/manifest/`, `conformance/module-io/`, `conformance/timescale/`, and `conformance/integrate/` from code with fixed values and a fixed-seed generator written in the tool. Two checks run it:
+`tools/conformance-gen` regenerates `conformance/matter/`, `conformance/registry/`, `conformance/container/`, `conformance/address/`, `conformance/manifest/`, `conformance/epochs/`, `conformance/module-io/`, `conformance/timescale/`, and `conformance/integrate/` from code with fixed values and a fixed-seed generator written in the tool. Two checks run it:
 
 - `cargo test -p conformance-gen` runs the generator into a scratch directory and compares every file to the checked-in copy byte for byte.
 - `scripts/ci.sh` runs it into `target/conformance-check` and fails on any `diff -r` difference against those directories.
 
-To refresh the vectors after an intended change: `rm -rf conformance/matter conformance/registry conformance/container conformance/address conformance/manifest conformance/module-io conformance/timescale conformance/integrate && cargo run -p conformance-gen -- conformance`.
+To refresh the vectors after an intended change: `rm -rf conformance/matter conformance/registry conformance/container conformance/address conformance/manifest conformance/epochs conformance/module-io conformance/timescale conformance/integrate && cargo run -p conformance-gen -- conformance`.
 
 ## How the laws keep the promise
 
