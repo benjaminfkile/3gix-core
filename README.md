@@ -36,7 +36,7 @@ The architecture and the byte-level format are specified in the hub repository u
 
 Rust stable. Targets: the host triple for native builds and `wasm32-unknown-unknown` for the browser. `wasm-pack` drives WebAssembly builds. `cargo fmt --check`, `cargo clippy -- -D warnings`, and `cargo test` must pass on every change.
 
-`sh scripts/ci.sh` runs the full check locally: toolchain versions, format, clippy, tests, regeneration of the conformance vectors with a byte-for-byte diff against every directory under `conformance/`, the WebAssembly build, a check that the generated TypeScript declarations carry every export, the WebAssembly build run under Node against the native conformance vectors (`scripts/wasm-node-check.mjs`), `wasm-opt`, the headless GPU compute probe, the vocabulary lint, the native shared library build, the C ABI check program, and the module determinism harness (the example module built for `wasm32-unknown-unknown` and run through `gx-module-host` natively and through Node, `scripts/module-determinism.sh`). See `docs/toolchain.md` for the last recorded run.
+`sh scripts/ci.sh` runs the full check locally: toolchain versions, format, clippy, tests, regeneration of the conformance vectors with a byte-for-byte diff against every directory under `conformance/`, the WebAssembly build, a check that the generated TypeScript declarations carry every export, the WebAssembly build run under Node against the native conformance vectors (`scripts/wasm-node-check.mjs`), `wasm-opt`, the headless GPU compute probe, the vocabulary lint, the native shared library builds (`libgx_core` and `libgx_module_host`), the C ABI check program, and the module determinism harness (the example module built for `wasm32-unknown-unknown` and run through `gx-module-host` natively and through Node, `scripts/module-determinism.sh`). See `docs/toolchain.md` for the last recorded run.
 
 ### Push hook
 
@@ -100,7 +100,8 @@ crates/gx-module-guest/  what a compiler author links to become a module:
                      gx_alloc, gx_free, gx_abi_version, gx_last_error, the
                      Module trait, and the gx_module! macro (docs/modules.md)
 crates/gx-module-host/   the native worker's module host on wasmtime:
-                     admission checks, limits, sources and compile; also the
+                     admission checks, limits, sources and compile, the
+                     module host C ABI cdylib (src/ffi.rs), and the
                      gx-module-run harness binary
 crates/gx-module-test/   a tiny example module for tests and conformance:
                      layered gas whose occupancy is the filled share of
@@ -132,6 +133,7 @@ conformance/         conformance vectors any implementation must pass
   timescale/         UTC to TDB cases with bit patterns, and the inverse
                      inside a leap second
 include/gx_core.h    hand-written C header for the C ABI
+include/gx_module_host.h  hand-written C header for the module host's C ABI
 tools/abi-check/     C program that links the shared library through the header
 tools/gpu-probe/     headless GPU compute probe (wgpu over Vulkan)
 tools/conformance-gen/  regenerates conformance/matter/,
@@ -154,6 +156,16 @@ The native build (`cargo build -p gx-core --release`) produces `target/release/l
 - **C and C++.** Include `gx_core.h` and link `-lgx_core`. `tools/abi-check/abi_check.c` is a complete caller; `scripts/ci.sh` builds it with the system `cc` and runs it against the conformance vectors.
 - **.NET.** P/Invoke the same symbols from `libgx_core`: `size_t` maps to `nuint`, `uint8_t*` and `char*` to `byte*` or `byte[]`, and the return value to `int`.
 - **WebAssembly.** `wasm-pack build crates/gx-core --target web` produces a package with these exports: `format_version()`, `validate(key, bytes)`, which throws an `Error` with message `CODE: REASON`, `decode_chunk_mass(key, bytes)`, the total mass in kilograms of every section in a hub container, `section_address(module, manifest, origin_utc_ms, span_seconds, span_index, key)`, the address as lowercase hex (the integers are `BigInt`, `manifest` may be `undefined`), `manifest_validate(bytes)`, `epochs_validate(bytes)`, `epochs_manifest(bytes, span_seconds, span_index)`, the manifest hash as lowercase hex or `undefined` when the epoch is not listed, `utc_ms_to_tdb_seconds(utc_ms)`, and `tdb_seconds_to_utc_ms(tdb)`. The C ABI symbols are exported from the WebAssembly module too.
+
+### The module host's C ABI
+
+`gx-core` stays free of wasmtime because it also builds for WebAssembly, so running a module natively is a separate library. `cargo build --release -p gx-module-host` produces `target/release/libgx_module_host.so` on Linux, `libgx_module_host.dylib` on macOS, and `gx_module_host.dll` on Windows, declared in `include/gx_module_host.h`. It is what the hub calls to settle a dispute with the host clients use (`client-compute.md` section 2.7):
+
+- `gx_module_compile(module, module_len, module_hash32, request, request_len, tiles, tiles_len, out_ptr, out_len, err_buf, err_len)` loads the module under its expected SHA-256 (refused with `GX_MODULE_ERR_HASH` otherwise) and runs `gx_compile` on the request and tile bytes of `client-compute.md` section 4, under 1 GiB of memory and 60 s.
+- `gx_module_sources(module, module_len, module_hash32, request, request_len, out_ptr, out_len, err_buf, err_len)` runs `gx_sources` and returns the raw `u64 LE` ids.
+- `gx_module_free(ptr, len)` frees a returned buffer.
+
+Each returns 0 on success or a negative `GX_MODULE_ERR_*` code with the reason in `err_buf`, under the same buffer contract as `gx_core.h`; panics are caught at the boundary. The output is the module's own bytes: validate a section with `gx_validate` before using it. From .NET, P/Invoke the symbols from `gx_module_host` with the same type mapping, `uint8_t**` as `byte**` or `out nint`.
 
 ## Contributing rules
 

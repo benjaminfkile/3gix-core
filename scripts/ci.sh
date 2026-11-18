@@ -2,9 +2,10 @@
 # Full local CI: toolchain versions, format, lint, tests, conformance vector
 # regeneration, WebAssembly build and export check, the WebAssembly build run
 # under Node against the native conformance vectors, headless GPU compute
-# probe, vocabulary lint, native shared library build, and the C ABI check
-# program, and the module determinism harness: the example module built for
-# wasm32 and run natively through gx-module-host and under Node.
+# probe, vocabulary lint, native shared library builds (the core library and
+# the module host), the C ABI check program, and the module determinism
+# harness: the example module built for wasm32 and run natively through
+# gx-module-host and under Node.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -77,6 +78,10 @@ sh scripts/vocab-lint.sh
 step "10. native shared library"
 cargo build -p gx-core --release
 ls target/release/libgx_core.so
+
+step "10b. module host shared library"
+cargo build -p gx-module-host --release
+ls -l target/release/libgx_module_host.so
 
 step "11. C ABI check program"
 mkdir -p target/abi-check
