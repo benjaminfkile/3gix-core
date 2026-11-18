@@ -19,9 +19,15 @@
 //! set is disabled, including relaxed SIMD and threads, and Cranelift
 //! canonicalizes NaNs so no NaN bit pattern depends on the machine.
 //!
+//! The same host is exported through a C ABI in [`ffi`] (`gx_module_compile`,
+//! `gx_module_sources`, `gx_module_free`) so the hub can settle a dispute by
+//! running the module with the host clients use (`client-compute.md`
+//! section 2.7).
+//!
 //! Native only. The browser build uses the browser's own WebAssembly.
 
 pub mod check;
+pub mod ffi;
 
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};

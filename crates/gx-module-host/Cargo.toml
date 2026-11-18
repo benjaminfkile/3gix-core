@@ -5,6 +5,10 @@ edition = "2021"
 publish = false
 description = "The native worker's module host: runs compiler modules under the module ABI v1."
 
+[lib]
+name = "gx_module_host"
+crate-type = ["rlib", "cdylib"]
+
 [dependencies]
 gx-core = { path = "../gx-core" }
 wasmtime = { version = "=50.0.1", default-features = false, features = ["cranelift", "runtime", "std"] }
