@@ -1,11 +1,13 @@
 //! Regenerates the matter section, frame registry, hub container, section
-//! address, source manifest, module request and tile, example module, time
+//! address, source manifest, epoch index, module request and tile, example
+//! module, time
 //! scale, integrator, and light-time conformance vectors.
 //!
 //! Usage: `conformance-gen OUT_DIR`. Writes `OUT_DIR/matter/valid/`,
 //! `OUT_DIR/matter/invalid/`, `OUT_DIR/registry/` (see the [`registry`]
 //! module), `OUT_DIR/container/` (see the [`container`] module),
 //! `OUT_DIR/address/` ([`address`]), `OUT_DIR/manifest/` ([`manifest`]),
+//! `OUT_DIR/epochs/` ([`epochs`]),
 //! `OUT_DIR/module-io/` ([`module_io`]), `OUT_DIR/module/` ([`module`]),
 //! `OUT_DIR/timescale/`
 //! ([`timescale`]), `OUT_DIR/integrate/` ([`integrate`]), and
@@ -46,6 +48,7 @@ use serde_json::{json, Value};
 
 mod address;
 mod container;
+mod epochs;
 mod integrate;
 mod light;
 mod manifest;
@@ -925,6 +928,7 @@ fn generate() -> Vec<File> {
     files.extend(container::files());
     files.extend(address::files());
     files.extend(manifest::files());
+    files.extend(epochs::files());
     files.extend(module_io::files());
     files.extend(module::files());
     files.extend(timescale::files());

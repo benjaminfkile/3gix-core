@@ -58,16 +58,21 @@
 //!   sections 2.4 and 3).
 //! - [`manifest`]: source manifests, encode, decode, validate, hash, and
 //!   look up (`client-compute.md` section 5.1).
+//! - [`epochs`]: epoch indexes, encode, decode, validate, hash, and the
+//!   epoch rule that picks a span's manifest (`client-compute.md` section
+//!   5.4).
 //! - [`module_io`]: module request bytes, tile bytes, and the source id
 //!   list (`client-compute.md` section 4).
 //! - [`timescale`]: UTC milliseconds to seconds of Barycentric Dynamical Time
 //!   since J2000 and back (`space-model.md` section 7 item 5).
-//! - The C ABI (`matter-format.md` section 7, `client-compute.md` sections 3
-//!   and 5.1): [`gx_format_version`], [`gx_validate`], [`gx_error_name`],
-//!   [`gx_section_address`], and [`gx_manifest_validate`], declared in
+//! - The C ABI (`matter-format.md` section 7, `client-compute.md` sections 3,
+//!   5.1, and 5.4): [`gx_format_version`], [`gx_validate`], [`gx_error_name`],
+//!   [`gx_section_address`], [`gx_manifest_validate`], [`gx_epochs_validate`],
+//!   and [`gx_epochs_manifest`], declared in
 //!   `include/gx_core.h`.
 //! - WebAssembly exports, on `wasm32` only: `format_version`, `validate`,
 //!   `decode_chunk_mass`, `section_address`, `manifest_validate`,
+//!   `epochs_validate`, `epochs_manifest`,
 //!   `utc_ms_to_tdb_seconds`, `tdb_seconds_to_utc_ms`,
 //!   `integrate_registry`, and `light_retarded_state`, built with
 //!   `wasm-bindgen`.
@@ -86,6 +91,7 @@ pub mod address;
 pub mod container;
 pub mod detmath;
 pub mod emission;
+pub mod epochs;
 pub mod error;
 pub mod extinction;
 pub mod frames;
@@ -339,6 +345,103 @@ pub unsafe extern "C" fn gx_manifest_validate(
     }
 }
 
+/// Validates an epoch index (`client-compute.md` section 5.4).
+///
+/// Returns 0 on success, or the error code from `docs/errors.md` (1001 to
+/// 1007) on failure, and writes the reason into `err_buf` exactly as
+/// [`gx_validate`] does. A null `bytes` with a non-zero `len` fails with 106;
+/// a null `bytes` with length 0 is an empty input.
+///
+/// # Safety
+///
+/// A non-null `bytes` must be valid for `len` readable bytes. If `err_buf` is
+/// non-null and `err_cap` is non-zero, `err_buf` must point to at least
+/// `err_cap` writable bytes that do not overlap the input.
+#[cfg_attr(feature = "exports", no_mangle)]
+pub unsafe extern "C" fn gx_epochs_validate(
+    bytes: *const u8,
+    len: usize,
+    err_buf: *mut c_char,
+    err_cap: usize,
+) -> i32 {
+    // SAFETY: the caller guarantees a non-null `bytes` is valid for `len`.
+    let bytes = unsafe { slice(bytes, len) };
+    let result = match bytes {
+        None => Err(ValidationError::new(
+            codes::BYTES_POINTER_NULL,
+            "bytes: null pointer with non-zero len",
+        )),
+        Some(b) => epochs::validate(b),
+    };
+    match result {
+        Ok(()) => 0,
+        Err(e) => {
+            // SAFETY: the caller guarantees `err_buf` is valid for `err_cap`
+            // bytes when it is non-null and `err_cap` is non-zero.
+            unsafe { write_reason(err_buf.cast::<u8>(), err_cap, &e.reason) };
+            i32::from(e.code)
+        }
+    }
+}
+
+/// Applies the epoch rule (`client-compute.md` section 5.4): decodes the
+/// epoch index in `bytes` and finds the manifest of span `span_index` of a
+/// layer with span length `span_seconds`.
+///
+/// Returns 0 and writes the 32-byte manifest hash to `out32` when the epoch
+/// is listed, and 1 when it is not (the section has no manifest; its address
+/// takes all zero bytes). Otherwise returns a negative error code and leaves
+/// `out32` untouched: minus 1011 for a null `out32`, minus 106 for a null
+/// `bytes` with a non-zero `len`, minus 1001 to 1007 for an invalid index,
+/// minus 1009 for a zero `span_seconds`, and minus 1010 when the epoch length
+/// is not a whole multiple of `span_seconds`.
+///
+/// # Safety
+///
+/// A non-null `bytes` must be valid for `len` readable bytes and a non-null
+/// `out32` for 32 writable bytes.
+#[cfg_attr(feature = "exports", no_mangle)]
+pub unsafe extern "C" fn gx_epochs_manifest(
+    bytes: *const u8,
+    len: usize,
+    span_seconds: u64,
+    span_index: u64,
+    out32: *mut u8,
+) -> i32 {
+    if out32.is_null() {
+        return -i32::from(codes::EPOCHS_POINTER_NULL);
+    }
+    // SAFETY: the caller guarantees a non-null `bytes` is valid for `len`.
+    let bytes = unsafe { slice(bytes, len) };
+    match epochs_manifest_ffi(bytes, span_seconds, span_index) {
+        Ok(Some(h)) => {
+            // SAFETY: `out32` is non-null and the caller guarantees it is
+            // valid for 32 writable bytes.
+            unsafe { core::ptr::copy_nonoverlapping(h.as_ptr(), out32, 32) };
+            0
+        }
+        Ok(None) => 1,
+        Err(e) => -i32::from(e.code),
+    }
+}
+
+/// The C ABI epoch rule, on safe inputs: the null pointer check, then
+/// [`epochs::decode`] and [`epochs::manifest_for_span`].
+fn epochs_manifest_ffi(
+    bytes: Option<&[u8]>,
+    span_seconds: u64,
+    span_index: u64,
+) -> Result<Option<[u8; 32]>, ValidationError> {
+    let bytes = bytes.ok_or_else(|| {
+        ValidationError::new(
+            codes::BYTES_POINTER_NULL,
+            "bytes: null pointer with non-zero len",
+        )
+    })?;
+    let index = epochs::decode(bytes)?;
+    epochs::manifest_for_span(&index, span_seconds, span_index)
+}
+
 /// Returns the short name of an error code, such as `BAD_MAGIC` for 102, as
 /// a pointer to a static NUL-terminated ASCII string. Unknown codes,
 /// including 0, give the empty string. Never returns null.
@@ -446,6 +549,29 @@ mod wasm {
     #[wasm_bindgen]
     pub fn manifest_validate(bytes: &[u8]) -> Result<(), JsError> {
         crate::manifest::validate(bytes).map_err(js)
+    }
+
+    /// Validates an epoch index. Throws an `Error` with message
+    /// `CODE: REASON` on failure.
+    #[wasm_bindgen]
+    pub fn epochs_validate(bytes: &[u8]) -> Result<(), JsError> {
+        crate::epochs::validate(bytes).map_err(js)
+    }
+
+    /// The epoch rule: the manifest hash, as lowercase hex, of span
+    /// `span_index` of a layer with span length `span_seconds` under the
+    /// epoch index `bytes`, or `undefined` when the epoch is not listed.
+    /// Throws an `Error` with message `CODE: REASON` for an invalid index or
+    /// span length.
+    #[wasm_bindgen]
+    pub fn epochs_manifest(
+        bytes: &[u8],
+        span_seconds: u64,
+        span_index: u64,
+    ) -> Result<Option<String>, JsError> {
+        super::epochs_manifest_ffi(Some(bytes), span_seconds, span_index)
+            .map(|h| h.map(|h| crate::sha256::to_hex(&h)))
+            .map_err(js)
     }
 
     /// Seconds of Barycentric Dynamical Time since J2000 at a UTC instant in
@@ -557,8 +683,8 @@ mod wasm {
 
 #[cfg(all(target_arch = "wasm32", feature = "exports"))]
 pub use wasm::{
-    decode_chunk_mass, format_version, integrate_registry, light_retarded_state, manifest_validate,
-    section_address,
+    decode_chunk_mass, epochs_manifest, epochs_validate, format_version, integrate_registry,
+    light_retarded_state, manifest_validate, section_address,
 };
 
 #[cfg(test)]

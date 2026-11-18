@@ -20,6 +20,7 @@ The codes are defined in `crates/gx-core/src/error.rs` (module `codes`). This ta
 | 900 to 929 | Source manifest (`client-compute.md` section 5.1) | in use |
 | 930 to 959 | Module request bytes, tile bytes, and the source id list (`client-compute.md` section 4) | in use |
 | 960 to 979 | Section addresses and span indices (`client-compute.md` sections 2.4 and 3) | in use |
+| 1000 to 1019 | Epoch indexes and the epoch rule (`client-compute.md` section 5.4) | in use |
 
 ## Check order
 
@@ -67,6 +68,12 @@ Negative zero counts as zero for the root position and velocity rules, for `j2`,
 ### Source manifest
 
 `manifest::decode`, `manifest::validate`, and `gx_manifest_validate` check, in order: length at least 12 (901), magic (902), version (903), reserved `u16` at offset 6 (904), length exactly `12 + 48 * entry_count` (905), then entry by entry: its `id` against the previous entry's (906 if lower, 907 if equal). `Manifest::new` sorts, then checks the entry count (908) and repeated ids (907). Through the C ABI a null `bytes` with a non-zero length returns 106 first.
+
+### Epoch index
+
+`epochs::decode`, `epochs::validate`, and `gx_epochs_validate` check, in order: length at least 20 (1001), magic (1002), version (1003), reserved `u16` at offset 6 (1004), `epoch seconds` greater than 0 (1005), length exactly `20 + 40 * entry_count` (1006), then entry by entry: its epoch index greater than the previous entry's (1007, for a lower or an equal one). `EpochIndex::new` checks `epoch seconds` (1005), sorts, then checks the entry count (1008) and repeated epoch indexes (1007). Through the C ABI a null `bytes` with a non-zero length returns 106 first.
+
+`epochs::check_layer`, `epochs::manifest_for_span`, and `gx_epochs_manifest` then check `span_seconds` greater than 0 (1009) and `epoch seconds` a whole multiple of `span_seconds` (1010). `gx_epochs_manifest` checks a null `out32` (1011) before anything else and returns every code negated.
 
 ### Module request, tiles, and source ids
 
@@ -285,13 +292,29 @@ A composite whose summed density overflows `f32` fails with 501, because the res
 | 961 | A span index was asked for a time before the origin. |
 | 962 | The C ABI was given a null `module32` or `out32`, or the WebAssembly export a module or manifest hash that is not 32 bytes. |
 
+### 1000 to 1019: epoch indexes and the epoch rule (`client-compute.md` section 5.4)
+
+| Code | Rule |
+|---|---|
+| 1001 | The input is shorter than the 20-byte epoch index header. |
+| 1002 | The magic is not `3GXE` (`0x33 0x47 0x58 0x45`). |
+| 1003 | `version` is not 1. |
+| 1004 | The reserved `u16` at offset 6 is not 0. |
+| 1005 | `epoch seconds` is 0. |
+| 1006 | The input length is not exactly `20 + 40 * entry_count`. |
+| 1007 | An entry's epoch index is not greater than the previous entry's: entries are not strictly ascending. |
+| 1008 | More entries than a `u32` counts were given to `EpochIndex::new`. Reachable only through the Rust API. No byte vector. |
+| 1009 | The epoch rule was asked for a layer with `span_seconds` 0. |
+| 1010 | `epoch seconds` is not a whole multiple of the layer's `span_seconds`. |
+| 1011 | `gx_epochs_manifest` was given a null `out32`. |
+
 ## Short names
 
 Each code has a short name, the identifier of its constant in `error::codes`, such as `BAD_MAGIC` for 102. `error::code_name` returns it in Rust and `gx_error_name` through the C ABI.
 
 ## C ABI contract
 
-Declared in `include/gx_core.h` (`matter-format.md` section 7, `client-compute.md` sections 3 and 5.1):
+Declared in `include/gx_core.h` (`matter-format.md` section 7, `client-compute.md` sections 3, 5.1, and 5.4):
 
 - `uint32_t gx_format_version(void)` returns the matter section format version, 1. The registry format version is 2 (`registry::VERSION`).
 - `int32_t gx_validate(key, key_len, bytes, bytes_len, err_buf, err_cap)` returns 0 on success and the code from this table on failure. `key` is UTF-8 and need not be NUL terminated.
@@ -300,6 +323,8 @@ Declared in `include/gx_core.h` (`matter-format.md` section 7, `client-compute.m
 - A null pointer with length 0 is an empty input. A null `key` with a non-zero `key_len` returns 207 and a null `bytes` with a non-zero `bytes_len` returns 106: never undefined behavior.
 - `int32_t gx_section_address(module32, manifest32_or_null, origin_utc_ms, span_seconds, span_index, key, key_len, out32)` writes the 32-byte section address of `client-compute.md` section 3 to `out32` and returns 0, or returns 962, 207, or 206 (see the check order above) and leaves `out32` untouched. A null `manifest32_or_null` means the layer has no source manifest.
 - `int32_t gx_manifest_validate(bytes, len, err_buf, err_cap)` validates a source manifest, returning 0 or a code from 901 to 907 (106 for a null `bytes` with a non-zero `len`), and writes the reason to `err_buf` under the same rules as `gx_validate`.
+- `int32_t gx_epochs_validate(bytes, len, err_buf, err_cap)` validates an epoch index, returning 0 or a code from 1001 to 1007 (106 for a null `bytes` with a non-zero `len`), and writes the reason to `err_buf` under the same rules as `gx_validate`.
+- `int32_t gx_epochs_manifest(bytes, len, span_seconds, span_index, out32)` applies the epoch rule: epoch `floor(span_index * span_seconds / epoch_seconds)`, computed without overflow. It returns 0 and writes the epoch's 32-byte manifest hash to `out32`, or 1 when the index does not list the epoch (the section's address then takes 32 zero bytes). Otherwise it returns a code from this table negated (-1011, -106, -1001 to -1007, -1009, -1010, in the check order above) and leaves `out32` untouched; 1 and 0 are never codes, so the sign tells them apart.
 - `const char* gx_error_name(int32_t code)` returns a static NUL-terminated short name, or the empty string for an unknown code (including 0). It never returns NULL and the string must not be freed.
 - Every function is stateless and thread safe.
 
@@ -314,3 +339,5 @@ Declared in `include/gx_core.h` (`matter-format.md` section 7, `client-compute.m
 `conformance/container/invalid/` holds one file for every code from 701 to 713, named `CODE-RULE.bin`, plus a container whose table is sound but whose first section fails with 102. `index.json` gives the key every file is decoded under and maps each file name to its code. `conformance/container/valid/` holds a matter chunk and a registry chunk with the expected decode results.
 
 `conformance/manifest/invalid/` holds at least one file for every code from 901 to 907, and `conformance/manifest/valid/` holds valid manifests with their entries and hashes. `conformance/module-io/request/invalid/`, `tiles/invalid/`, and `sources/invalid/` hold at least one file for every code from 931 to 936, for 941 to 944, and for 951 and 952, each with an `index.json`, beside valid files with their decoded values. `conformance/address/spans.json` has a case for 961.
+
+`conformance/epochs/invalid/` holds at least one file for every code from 1001 to 1007, with an `index.json`. `conformance/epochs/valid/` holds valid epoch indexes with their entries and hashes and a table of epoch rule cases: `span_seconds` and `span_index` as decimal strings and the expected manifest hash, `null` for an epoch that is not listed, or the expected code (1009, 1010). The cases include span indexes on both sides of epoch boundaries and span indexes near the top of the `u64` range.

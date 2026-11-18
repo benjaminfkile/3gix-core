@@ -1,0 +1,47 @@
+{
+  "cases": [
+    {
+      "manifest": "f0db36f05de86ecb6966a89e7001c144ddb3101a270ffdcb3b713fabdf755ab8",
+      "span_index": "0",
+      "span_seconds": "18446744073709551615"
+    },
+    {
+      "manifest": null,
+      "span_index": "1",
+      "span_seconds": "18446744073709551615"
+    },
+    {
+      "manifest": "437cdceb735352df1501ec8efb19c3d9b5387ae482221df8826fe6aa0e3d0475",
+      "span_index": "18446744073709551615",
+      "span_seconds": "18446744073709551615"
+    },
+    {
+      "manifest": null,
+      "span_index": "18446744073709551615",
+      "span_seconds": "1"
+    },
+    {
+      "manifest": null,
+      "span_index": "18446744073709551615",
+      "span_seconds": "3"
+    },
+    {
+      "code": 1010,
+      "span_index": "1",
+      "span_seconds": "2"
+    }
+  ],
+  "entries": [
+    {
+      "epoch": "0",
+      "manifest": "f0db36f05de86ecb6966a89e7001c144ddb3101a270ffdcb3b713fabdf755ab8"
+    },
+    {
+      "epoch": "18446744073709551615",
+      "manifest": "437cdceb735352df1501ec8efb19c3d9b5387ae482221df8826fe6aa0e3d0475"
+    }
+  ],
+  "entry_count": 2,
+  "epoch_seconds": "18446744073709551615",
+  "hash": "39049b2c32cc45b068acf52fe6f6ecf2a3a81c15d99ba8a8876b5f3190a08fe9"
+}

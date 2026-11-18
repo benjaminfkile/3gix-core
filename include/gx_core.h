@@ -3,8 +3,8 @@
 
 /*
  * C ABI of the 3gix core library (matter-format.md section 7, and
- * client-compute.md sections 3 and 5.1 for section addresses and source
- * manifests).
+ * client-compute.md sections 3, 5.1, and 5.4 for section addresses, source
+ * manifests, and epoch indexes).
  *
  * Link against the native shared library (libgx_core.so on Linux). Every
  * function is thread safe and keeps no state between calls. Error codes and
@@ -89,6 +89,36 @@ int32_t gx_section_address(const uint8_t* module32,
  */
 int32_t gx_manifest_validate(const uint8_t* bytes, size_t len,
                              char* err_buf, size_t err_cap);
+
+/*
+ * Validates an epoch index (client-compute.md section 5.4).
+ *
+ * Returns 0 on success, or an error code from 1001 to 1007 (docs/errors.md)
+ * on failure, and writes the reason into `err_buf` exactly as gx_validate
+ * does. A NULL `bytes` with a non-zero `len` returns 106; a NULL `bytes` with
+ * length 0 is an empty input.
+ */
+int32_t gx_epochs_validate(const uint8_t* bytes, size_t len,
+                           char* err_buf, size_t err_cap);
+
+/*
+ * Applies the epoch rule (client-compute.md section 5.4) to the epoch index
+ * in `bytes`: the epoch of span `span_index` of a layer with span length
+ * `span_seconds` is floor(span_index * span_seconds / epoch_seconds),
+ * computed without overflow.
+ *
+ * Returns 0 and writes that epoch's 32-byte manifest hash to `out32` when the
+ * index lists the epoch. Returns 1 when it does not: the section has no
+ * manifest and its address takes 32 zero bytes. Otherwise returns a negative
+ * error code (the code of docs/errors.md, negated) and leaves `out32`
+ * untouched: -1011 for a NULL `out32`, -106 for a NULL `bytes` with a
+ * non-zero `len`, -1001 to -1007 for an invalid index, -1009 for a zero
+ * `span_seconds`, and -1010 when epoch_seconds is not a whole multiple of
+ * `span_seconds`.
+ */
+int32_t gx_epochs_manifest(const uint8_t* bytes, size_t len,
+                           uint64_t span_seconds, uint64_t span_index,
+                           uint8_t* out32);
 
 #ifdef __cplusplus
 }

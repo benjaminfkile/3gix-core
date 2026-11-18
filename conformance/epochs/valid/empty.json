@@ -1,0 +1,28 @@
+{
+  "cases": [
+    {
+      "manifest": null,
+      "span_index": "0",
+      "span_seconds": "3600"
+    },
+    {
+      "manifest": null,
+      "span_index": "18446744073709551615",
+      "span_seconds": "3600"
+    },
+    {
+      "code": 1009,
+      "span_index": "0",
+      "span_seconds": "0"
+    },
+    {
+      "code": 1010,
+      "span_index": "1",
+      "span_seconds": "7200"
+    }
+  ],
+  "entries": [],
+  "entry_count": 0,
+  "epoch_seconds": "3600",
+  "hash": "6443e01e2a79da67466b8b655f527128124181a2eb1ede51bc7e388033db525f"
+}

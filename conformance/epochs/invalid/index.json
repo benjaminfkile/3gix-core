@@ -1,0 +1,14 @@
+{
+  "vectors": {
+    "1001-header-too-short.bin": 1001,
+    "1002-bad-magic.bin": 1002,
+    "1003-unsupported-version.bin": 1003,
+    "1004-reserved-nonzero.bin": 1004,
+    "1005-zero-epoch-seconds.bin": 1005,
+    "1006-count-high.bin": 1006,
+    "1006-length-long.bin": 1006,
+    "1006-length-short.bin": 1006,
+    "1007-duplicate-epoch.bin": 1007,
+    "1007-not-ascending.bin": 1007
+  }
+}

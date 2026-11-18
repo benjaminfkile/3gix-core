@@ -4,13 +4,16 @@
  *
  * Usage: abi_check REGISTRY_VECTOR MATTER_VECTOR MATTER_KEY
  *                  REGISTRY_V1_VECTOR MANIFEST_VECTOR BAD_MANIFEST_VECTOR
+ *                  EPOCHS_VECTOR BAD_EPOCHS_VECTOR
  *
  * Calls gx_format_version, then gx_validate with a valid registry vector
  * (registry format version 2), a valid matter vector (matter format
  * version 3), the registry vector under a cell key, the matter vector with a
  * retired version 2 header, and a retired version 1 registry, and checks the return
  * codes, the reason, the buffer truncation, and gx_error_name. Then checks
- * gx_manifest_validate on a valid and an unsorted manifest, and
+ * gx_manifest_validate on a valid and an unsorted manifest,
+ * gx_epochs_validate and gx_epochs_manifest on the daily epoch index of
+ * conformance/epochs/valid/daily.json and an unsorted index, and
  * gx_section_address against two cases of conformance/address/cases.json.
  * Run by scripts/ci.sh. Exits 0 when every check passes.
  */
@@ -109,9 +112,10 @@ static int32_t validate(const char* key, const uint8_t* bytes, size_t len,
 }
 
 int main(int argc, char** argv) {
-    if (argc != 7) {
+    if (argc != 9) {
         fputs("usage: abi_check REGISTRY_VECTOR MATTER_VECTOR MATTER_KEY "
-              "REGISTRY_V1_VECTOR MANIFEST_VECTOR BAD_MANIFEST_VECTOR\n",
+              "REGISTRY_V1_VECTOR MANIFEST_VECTOR BAD_MANIFEST_VECTOR "
+              "EPOCHS_VECTOR BAD_EPOCHS_VECTOR\n",
               stderr);
         return 2;
     }
@@ -207,6 +211,48 @@ int main(int argc, char** argv) {
           "null manifest bytes with non-zero length returns 106");
     free(man);
     free(bad);
+
+    /* Epoch indexes, cases from conformance/epochs/valid/daily.json. */
+    size_t ep_len = 0;
+    size_t bad_ep_len = 0;
+    uint8_t* ep = read_file(argv[7], &ep_len);
+    uint8_t* bad_ep = read_file(argv[8], &bad_ep_len);
+    memset(err, 0x7f, sizeof err);
+    check(gx_epochs_validate(ep, ep_len, err, sizeof err) == 0,
+          "valid epoch index returns 0");
+    check((unsigned char)err[0] == 0x7f, "epochs success leaves err_buf untouched");
+    rc = gx_epochs_validate(bad_ep, bad_ep_len, err, sizeof err);
+    printf("      unsorted epoch index: %d %s: %s\n", (int)rc, gx_error_name(rc), err);
+    check(rc == 1007 && strcmp(gx_error_name(rc), "EPOCHS_NOT_ASCENDING") == 0,
+          "unsorted epoch index returns 1007");
+    check(gx_epochs_validate(NULL, 3, err, sizeof err) == 106,
+          "null epochs bytes with non-zero length returns 106");
+    uint8_t man_hash[32];
+    char got[65];
+    check(gx_epochs_manifest(ep, ep_len, 3600, 23, man_hash) == 0,
+          "hour 23 lies in a listed epoch");
+    hex32(man_hash, got);
+    check(strcmp(got, "f0db36f05de86ecb6966a89e7001c144ddb3101a270ffdcb3b713fabdf755ab8") == 0,
+          "hour 23 has the manifest of epoch 0");
+    check(gx_epochs_manifest(ep, ep_len, 3600, 24, man_hash) == 0,
+          "hour 24 lies in a listed epoch");
+    hex32(man_hash, got);
+    check(strcmp(got, "cde526ce98384a370093912025c8351ca9adf9ba6c646034172482a0acfb7793") == 0,
+          "hour 24 has the manifest of epoch 1");
+    memset(man_hash, 0x7f, sizeof man_hash);
+    check(gx_epochs_manifest(ep, ep_len, 3600, 48, man_hash) == 1,
+          "hour 48 lies in an epoch that is not listed");
+    check(gx_epochs_manifest(ep, ep_len, 7, 0, man_hash) == -1010,
+          "a span that does not divide the epoch returns -1010");
+    check(gx_epochs_manifest(ep, ep_len, 0, 0, man_hash) == -1009,
+          "a zero span returns -1009");
+    check(gx_epochs_manifest(bad_ep, bad_ep_len, 3600, 0, man_hash) == -1007,
+          "an unsorted index returns -1007");
+    check(gx_epochs_manifest(ep, ep_len, 3600, 0, NULL) == -1011,
+          "a null out32 returns -1011");
+    check(man_hash[0] == 0x7f, "none and failures leave out32 untouched");
+    free(ep);
+    free(bad_ep);
 
     /* Section addresses, two cases from conformance/address/cases.json. */
     check_address(
