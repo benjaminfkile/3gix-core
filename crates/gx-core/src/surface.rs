@@ -39,7 +39,7 @@ pub const HEIGHT_SIDE: usize = TILE_VERTICES + 2;
 pub const PARENT_SIDE: usize = TILE_QUADS / 2 + 1 + 2;
 
 /// Surface tile format version.
-pub const VERSION: u16 = 1;
+pub const VERSION: u16 = 2;
 
 /// Magic bytes `3GSF`.
 pub const MAGIC: [u8; 4] = *b"3GSF";
@@ -72,6 +72,10 @@ pub struct SurfaceTile {
     pub radius_equatorial: f64,
     /// Polar radius of the reference ellipsoid, meters.
     pub radius_polar: f64,
+    /// The lowest height, meters, of the frame's whole surface: no height
+    /// of any tile of the frame, at any level, is below it (section 10.2).
+    /// A renderer may treat the reference shape lowered by it as opaque.
+    pub height_floor: f64,
     /// Heights above the reference ellipsoid, meters, at vertices
     /// `(i, j)` for `i, j` in `-1 ..= TILE_QUADS + 1`, row major (`j`
     /// outer): [`HEIGHT_SIDE`] squared.
@@ -175,7 +179,7 @@ fn le_f64(b: &[u8], o: usize) -> f64 {
     f64::from_le_bytes(b[o..o + 8].try_into().expect("8 bytes"))
 }
 
-fn header(key: &SurfaceKey, flags: u16, a: f64, c: f64, block_len: u64) -> Vec<u8> {
+fn header(key: &SurfaceKey, flags: u16, a: f64, c: f64, floor: f64, block_len: u64) -> Vec<u8> {
     let mut h = Vec::with_capacity(HEADER_LEN);
     h.extend_from_slice(&MAGIC);
     h.extend_from_slice(&VERSION.to_le_bytes());
@@ -189,7 +193,7 @@ fn header(key: &SurfaceKey, flags: u16, a: f64, c: f64, block_len: u64) -> Vec<u
     h.extend_from_slice(&0u32.to_le_bytes());
     h.extend_from_slice(&a.to_le_bytes());
     h.extend_from_slice(&c.to_le_bytes());
-    h.extend_from_slice(&0u64.to_le_bytes());
+    h.extend_from_slice(&floor.to_le_bytes());
     h.extend_from_slice(&block_len.to_le_bytes());
     debug_assert_eq!(h.len(), HEADER_LEN);
     h
@@ -197,7 +201,7 @@ fn header(key: &SurfaceKey, flags: u16, a: f64, c: f64, block_len: u64) -> Vec<u
 
 /// The bytes of an empty tile (section 10.4).
 pub fn encode_empty(key: &SurfaceKey) -> Vec<u8> {
-    header(key, FLAG_EMPTY, 0.0, 0.0, 0)
+    header(key, FLAG_EMPTY, 0.0, 0.0, 0.0, 0)
 }
 
 /// The bytes of `tile` (section 10.2 and 10.3), the block compressed or not.
@@ -237,6 +241,7 @@ pub fn encode(tile: &SurfaceTile, compression: Compression) -> Vec<u8> {
         flags,
         tile.radius_equatorial,
         tile.radius_polar,
+        tile.height_floor,
         BLOCK_LEN as u64,
     );
     out.extend_from_slice(&payload);
@@ -268,11 +273,7 @@ pub fn decode(key: &SurfaceKey, bytes: &[u8]) -> Result<Tile, ValidationError> {
         );
     }
     let flags = le_u16(bytes, 6);
-    if flags & !(FLAG_EMPTY | FLAG_ZSTD) != 0
-        || le_u16(bytes, 18) != 0
-        || le_u32(bytes, 28) != 0
-        || le_u64(bytes, 48) != 0
-    {
+    if flags & !(FLAG_EMPTY | FLAG_ZSTD) != 0 || le_u16(bytes, 18) != 0 || le_u32(bytes, 28) != 0 {
         return err(
             codes::SURFACE_RESERVED_NONZERO,
             "reserved field or flag bit set".into(),
@@ -291,18 +292,20 @@ pub fn decode(key: &SurfaceKey, bytes: &[u8]) -> Result<Tile, ValidationError> {
             format!("header names {found:?}, the key is {key}"),
         );
     }
-    let (a, c) = (le_f64(bytes, 32), le_f64(bytes, 40));
+    let (a, c, floor) = (le_f64(bytes, 32), le_f64(bytes, 40), le_f64(bytes, 48));
     let block_len = le_u64(bytes, 56);
     if flags & FLAG_EMPTY != 0 {
         if flags & FLAG_ZSTD != 0
             || a != 0.0
             || c != 0.0
+            || floor.to_bits() != 0
             || block_len != 0
             || bytes.len() != HEADER_LEN
         {
             return err(
                 codes::SURFACE_EMPTY_INVALID,
-                "an empty tile has zero radii, no block, and nothing after the header".into(),
+                "an empty tile has zero radii and floor, no block, and nothing after the header"
+                    .into(),
             );
         }
         return Ok(Tile::Empty(*key));
@@ -310,6 +313,12 @@ pub fn decode(key: &SurfaceKey, bytes: &[u8]) -> Result<Tile, ValidationError> {
     let radius_ok = |r: f64| r.is_finite() && r > 0.0;
     if !(radius_ok(a) && radius_ok(c)) || c > 2.0 * a || a > 2.0 * c {
         return err(codes::SURFACE_RADIUS, format!("radii {a} m and {c} m"));
+    }
+    if !(floor.is_finite() && floor > -(a.min(c))) {
+        return err(
+            codes::SURFACE_FLOOR,
+            format!("height_floor {floor} m with radii {a} m and {c} m"),
+        );
     }
     if block_len != BLOCK_LEN as u64 {
         return err(
@@ -356,13 +365,15 @@ pub fn decode(key: &SurfaceKey, bytes: &[u8]) -> Result<Tile, ValidationError> {
         .iter()
         .map(|b| f32::from_le_bytes(*b))
         .collect();
-    let floor = -(a.min(c));
     for (name, list) in [("height", &heights), ("parent height", &parent_heights)] {
-        if let Some(i) = list
-            .iter()
-            .position(|&h| !(h.is_finite() && f64::from(h) > floor))
-        {
+        if let Some(i) = list.iter().position(|&h| !h.is_finite()) {
             return err(codes::SURFACE_VALUE, format!("{name} {i} is {}", list[i]));
+        }
+        if let Some(i) = list.iter().position(|&h| f64::from(h) < floor) {
+            return err(
+                codes::SURFACE_BELOW_FLOOR,
+                format!("{name} {i} is {}, below height_floor {floor}", list[i]),
+            );
         }
     }
     if let Some(i) = temperature
@@ -378,6 +389,7 @@ pub fn decode(key: &SurfaceKey, bytes: &[u8]) -> Result<Tile, ValidationError> {
         key: *key,
         radius_equatorial: a,
         radius_polar: c,
+        height_floor: floor,
         heights,
         parent_heights,
         albedo,
@@ -396,6 +408,7 @@ mod tests {
             key,
             radius_equatorial: 6_378_137.0,
             radius_polar: 6_356_752.3,
+            height_floor: -10.0,
             heights: (0..HEIGHT_SIDE * HEIGHT_SIDE)
                 .map(|i| (i % 97) as f32)
                 .collect(),
@@ -462,6 +475,49 @@ mod tests {
         assert_eq!(
             decode(&key, &b).unwrap_err().code,
             codes::SURFACE_BLOCK_LENGTH
+        );
+        // The floor: finite, above minus the smaller radius, and no height
+        // or parent height below it.
+        for bad in [f64::NAN, f64::NEG_INFINITY, -6_356_752.3, -7.0e6] {
+            let mut t = tile(key);
+            t.height_floor = bad;
+            assert_eq!(
+                decode(&key, &encode(&t, Compression::None))
+                    .unwrap_err()
+                    .code,
+                codes::SURFACE_FLOOR,
+                "{bad}"
+            );
+        }
+        let mut t = tile(key);
+        t.heights[100] = -10.5;
+        assert_eq!(
+            decode(&key, &encode(&t, Compression::None))
+                .unwrap_err()
+                .code,
+            codes::SURFACE_BELOW_FLOOR
+        );
+        let mut t = tile(key);
+        t.parent_heights[3] = -11.0;
+        assert_eq!(
+            decode(&key, &encode(&t, Compression::None))
+                .unwrap_err()
+                .code,
+            codes::SURFACE_BELOW_FLOOR
+        );
+        // A height exactly at the floor is allowed; the floor round-trips.
+        let mut t = tile(key);
+        t.heights[100] = -10.0;
+        match decode(&key, &encode(&t, Compression::None)).unwrap() {
+            Tile::Surface(d) => assert_eq!(d.height_floor, -10.0),
+            Tile::Empty(_) => panic!("empty"),
+        }
+        // An empty tile carries no floor.
+        let mut e = encode_empty(&key);
+        e[48..56].copy_from_slice(&(-1.0f64).to_le_bytes());
+        assert_eq!(
+            decode(&key, &e).unwrap_err().code,
+            codes::SURFACE_EMPTY_INVALID
         );
     }
 

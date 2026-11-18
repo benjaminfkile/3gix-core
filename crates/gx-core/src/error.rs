@@ -444,9 +444,14 @@ pub mod codes {
         /// after the header are not exactly that block (or one zstd frame of
         /// it).
         SURFACE_BLOCK_LENGTH = 987;
-        /// A height is not finite, or reaches below the reference shape's
-        /// center; or a temperature is not finite and at least 0.
+        /// A height is not finite, or a temperature is not finite and at
+        /// least 0.
         SURFACE_VALUE = 988;
+        /// `height_floor` is not finite, or reaches the reference shape's
+        /// center (it must be above minus the smaller radius).
+        SURFACE_FLOOR = 989;
+        /// A height or parent height is below `height_floor`.
+        SURFACE_BELOW_FLOOR = 990;
     }
 }
 
