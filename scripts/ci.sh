@@ -39,6 +39,7 @@ diff -r target/conformance-check/container conformance/container
 diff -r target/conformance-check/address conformance/address
 diff -r target/conformance-check/manifest conformance/manifest
 diff -r target/conformance-check/epochs conformance/epochs
+diff -r target/conformance-check/frame-record conformance/frame-record
 diff -r target/conformance-check/module-io conformance/module-io
 diff -r target/conformance-check/timescale conformance/timescale
 diff -r target/conformance-check/integrate conformance/integrate
@@ -95,7 +96,10 @@ LD_LIBRARY_PATH=target/release target/abi-check/abi_check \
     conformance/manifest/valid/three.bin \
     conformance/manifest/invalid/906-not-sorted.bin \
     conformance/epochs/valid/daily.bin \
-    conformance/epochs/invalid/1007-not-ascending.bin
+    conformance/epochs/invalid/1007-not-ascending.bin \
+    conformance/frame-record/valid/registry.bin \
+    conformance/frame-record/valid/j2.bin \
+    conformance/frame-record/valid/disagrees-mass.bin
 
 step "12. example module for wasm32"
 cargo build -p gx-module-test --release --target wasm32-unknown-unknown

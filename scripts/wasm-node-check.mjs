@@ -2,7 +2,7 @@
 // against the conformance vectors the native build is tested with, so the two
 // must agree byte for byte: section addresses, UTC to TDB bit patterns and
 // back, source manifest validation, epoch index validation and the epoch
-// rule cases, matter format version 3 validation
+// rule cases, frame record validation under `frame-` keys, matter format version 3 validation
 // (every valid and invalid matter vector, and the mass of the matter
 // container), registry format version 2 validation, the integrator's state bytes for the integrate vectors, and
 // the retarded state bytes for the light vectors.
@@ -106,6 +106,20 @@ for (const name of ["daily", "empty", "widest"]) {
 for (const [file, want] of Object.entries(json("epochs/invalid/index.json").vectors)) {
   const got = code(() => gx.epochs_validate(bin(`epochs/invalid/${file}`)));
   check(got === want, `epochs ${file}: ${got}`);
+}
+
+const frValid = json("frame-record/valid/index.json");
+for (const [file, want] of Object.entries(frValid.records)) {
+  const got = code(() => gx.validate(want.key, bin(`frame-record/valid/${file}`)));
+  check(got === 0, `frame record ${file}: ${got}`);
+}
+const frInvalid = json("frame-record/invalid/index.json");
+for (const [file, want] of Object.entries(frInvalid.vectors)) {
+  const got = code(() => gx.validate(frInvalid.key, bin(`frame-record/invalid/${file}`)));
+  check(got === want, `frame record ${file}: ${got}`);
+}
+for (let c = 1021; c <= 1029; c++) {
+  check(Object.values(frInvalid.vectors).includes(c), `frame record vector for code ${c}`);
 }
 
 check(gx.format_version() === 3, `format_version is ${gx.format_version()}`);

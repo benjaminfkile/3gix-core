@@ -1,7 +1,7 @@
 //! Determinism proof: running the generator into a scratch directory
 //! produces exactly the files checked in under `conformance/matter/`,
 //! `conformance/registry/`, `conformance/container/`, `conformance/address/`,
-//! `conformance/manifest/`, `conformance/epochs/`, `conformance/module-io/`, and
+//! `conformance/manifest/`, `conformance/epochs/`, `conformance/frame-record/`, `conformance/module-io/`, and
 //! `conformance/timescale/`, byte for byte, with no file missing or extra.
 
 use std::path::{Path, PathBuf};
@@ -44,6 +44,7 @@ fn generator_reproduces_checked_in_vectors() {
         "address",
         "manifest",
         "epochs",
+        "frame-record",
         "module-io",
         "timescale",
     ] {

@@ -1,0 +1,25 @@
+{
+  "records": {
+    "disagrees-mass.bin": {
+      "agrees": -5,
+      "key": "frame-3"
+    },
+    "empty.bin": {
+      "agrees": -1,
+      "key": "frame-4"
+    },
+    "j2.bin": {
+      "agrees": 0,
+      "key": "frame-3"
+    },
+    "moments.bin": {
+      "agrees": 0,
+      "key": "frame-2"
+    },
+    "root.bin": {
+      "agrees": 0,
+      "key": "frame-1"
+    }
+  },
+  "registry": "registry.bin"
+}

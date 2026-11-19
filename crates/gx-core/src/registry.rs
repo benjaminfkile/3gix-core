@@ -199,7 +199,7 @@ fn vec_zero(v: Vec3) -> bool {
 
 /// Checks the field rules of one record, in the order of `docs/errors.md`.
 /// `i` is the record index, used in reasons.
-fn check_frame(i: usize, f: &Frame) -> Result<(), ValidationError> {
+pub(crate) fn check_frame(i: usize, f: &Frame) -> Result<(), ValidationError> {
     let id = f.frame_id;
     let fail = |code: u16, what: String| {
         Err(ValidationError::new(

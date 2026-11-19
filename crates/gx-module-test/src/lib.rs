@@ -163,6 +163,7 @@ impl Module for TestModule {
             ChunkKey::Cell(cell) => vec![tile_id(cell)],
             // No surface: nothing to read.
             ChunkKey::Surface(_) => Vec::new(),
+            ChunkKey::Frame(_) => Vec::new(),
         }
     }
 
@@ -176,6 +177,10 @@ impl Module for TestModule {
             }
             // This module emits no surface tiles (`matter-format.md` 10.4).
             ChunkKey::Surface(tile) => Ok(gx_core::surface::encode_empty(tile)),
+            // This module declares no frames (`matter-format.md` 11.2).
+            ChunkKey::Frame(id) => Ok(gx_core::frame_record::encode(
+                &gx_core::frame_record::FrameRecord::empty(*id),
+            )),
         }
     }
 }
