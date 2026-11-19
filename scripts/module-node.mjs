@@ -10,6 +10,13 @@
 // gx_sources and checks the ids equal the tile ids, runs gx_compile, and
 // compares the SHA-256 of the section with the expected hash. Each vector
 // runs in a fresh instance, as in the native host. Exits 1 if any fails.
+//
+// A module whose gx_abi_version returns 2 (client-compute.md section 4.1)
+// is run with the version 2 exports: for every vector it also reads
+// NAME.frames.bin, NAME.input-list.bin, and NAME.inputs.bin, runs
+// gx_inputs(request, frames) and checks the list equals NAME.input-list.bin,
+// runs gx_sources(request, frames), and runs
+// gx_compile(request, tiles, inputs).
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -58,11 +65,21 @@ class Call {
     }
 }
 
+const version = new Call(await WebAssembly.instantiate(module, {})).e.gx_abi_version();
+if (version !== 1 && version !== 2) {
+    console.error(`node: gx_abi_version returned ${version}, expected 1 or 2`);
+    process.exit(1);
+}
+
 async function fresh() {
     const instance = await WebAssembly.instantiate(module, {});
     const call = new Call(instance);
-    if (call.e.gx_abi_version() !== 1) throw new Error("gx_abi_version is not 1");
+    if (call.e.gx_abi_version() !== version) throw new Error("gx_abi_version changed");
     return call;
+}
+
+function equal(a, b) {
+    return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
 function tileIds(tiles) {
@@ -100,9 +117,30 @@ for (const name of names) {
         const tiles = new Uint8Array(readFileSync(join(dir, `${name}.tiles.bin`)));
         const expected = readFileSync(join(dir, `${name}.sha256`), "utf8").trim();
 
-        let call = await fresh();
+        const read = (s) => new Uint8Array(readFileSync(join(dir, `${name}.${s}`)));
+        const frames = version === 2 ? read("frames.bin") : null;
+
+        let call;
+        if (version === 2) {
+            call = await fresh();
+            const [rp, rl] = call.write(request);
+            const [fp, fl] = call.write(frames);
+            const list = call.take(call.e.gx_inputs(rp, rl, fp, fl));
+            if (!equal(list, read("input-list.bin"))) {
+                throw new Error("input list differs from input-list.bin");
+            }
+        }
+
+        call = await fresh();
         const [rp, rl] = call.write(request);
-        const ids = sourceIds(call.take(call.e.gx_sources(rp, rl)));
+        let packed;
+        if (version === 2) {
+            const [fp, fl] = call.write(frames);
+            packed = call.e.gx_sources(rp, rl, fp, fl);
+        } else {
+            packed = call.e.gx_sources(rp, rl);
+        }
+        const ids = sourceIds(call.take(packed));
         const want = tileIds(tiles);
         if (ids.join(",") !== want.join(",")) {
             throw new Error(`sources [${ids}], tiles carry [${want}]`);
@@ -111,7 +149,13 @@ for (const name of names) {
         call = await fresh();
         const [qp, ql] = call.write(request);
         const [tp, tl] = call.write(tiles);
-        const section = call.take(call.e.gx_compile(qp, ql, tp, tl));
+        let section;
+        if (version === 2) {
+            const [ip, il] = call.write(read("inputs.bin"));
+            section = call.take(call.e.gx_compile(qp, ql, tp, tl, ip, il));
+        } else {
+            section = call.take(call.e.gx_compile(qp, ql, tp, tl));
+        }
         const got = createHash("sha256").update(section).digest("hex");
         if (got !== expected) throw new Error(`output ${got}, expected ${expected}`);
         console.log(`node   ok   ${name} ${got}`);

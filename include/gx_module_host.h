@@ -2,11 +2,16 @@
 #define GX_MODULE_HOST_H
 
 /*
- * C ABI of the native module host (client-compute.md sections 2.7 and 4).
+ * C ABI of the native module host (client-compute.md sections 2.7, 4, 4.1,
+ * and 10).
  *
  * Runs a compiler module natively with the host clients use (wasmtime with
- * Cranelift, the module ABI version 1), so the hub can settle a dispute by
- * running the module itself. Link against the native shared library built
+ * Cranelift, the module ABI version 1 or 2), so the hub can settle a dispute
+ * by running the module itself, compute frame records (section 10.2), and
+ * read a module's input list (section 10.4). gx_module_compile and
+ * gx_module_sources run version 1 modules; gx_module_inputs,
+ * gx_module_sources2, and gx_module_compile2 run version 2 modules, and run
+ * a version 1 module as version 1 when given no frame records or inputs. Link against the native shared library built
  * by `cargo build --release -p gx-module-host`: libgx_module_host.so on
  * Linux, libgx_module_host.dylib on macOS, gx_module_host.dll on Windows.
  *
@@ -40,8 +45,8 @@ extern "C" {
 /* The module bytes do not hash (SHA-256) to module_hash32. */
 #define GX_MODULE_ERR_HASH (-2)
 /* The module is not admissible: it does not parse, imports something, uses a
- * forbidden feature or instruction, lacks a required export, or reports an
- * ABI version other than 1. */
+ * forbidden feature or instruction, lacks a required export, reports an ABI
+ * version other than 1 or 2, or has exports that do not match its version. */
 #define GX_MODULE_ERR_REJECTED (-3)
 /* The engine could not be built, or the module could not be compiled or
  * instantiated. */
@@ -59,6 +64,10 @@ extern "C" {
 #define GX_MODULE_ERR_ABI (-9)
 /* The host panicked: a bug in the host, never in the module. */
 #define GX_MODULE_ERR_PANIC (-10)
+/* The call does not fit the module's ABI version: gx_module_compile or
+ * gx_module_sources on a version 2 module, or frame records or inputs given
+ * to a version 1 module. */
+#define GX_MODULE_ERR_VERSION (-11)
 
 /*
  * Loads the module (module_len bytes) under module_hash32, its expected
@@ -93,8 +102,66 @@ int32_t gx_module_sources(const uint8_t* module, size_t module_len,
                           char* err_buf, size_t err_len);
 
 /*
- * Frees a buffer returned by gx_module_compile or gx_module_sources, with
- * the exact length returned. A null ptr is ignored.
+ * Loads the module as gx_module_compile does and returns its ABI version:
+ * 1, or 2 for a module that reads inputs (client-compute.md section 4.1).
+ * On failure returns a GX_MODULE_ERR_* code.
+ */
+int32_t gx_module_abi_version(const uint8_t* module, size_t module_len,
+                              const uint8_t* module_hash32,
+                              char* err_buf, size_t err_len);
+
+/*
+ * Loads the module as gx_module_compile does and runs gx_inputs with the
+ * request bytes and frame bytes exactly as given (client-compute.md section
+ * 4.1: u32 LE count, then per frame record u32 LE length and the record, the
+ * records of the layer's frames slots in slot order).
+ *
+ * Returns 0 and the raw input list in *out_ptr and *out_len: u32 LE count,
+ * then per entry u32 LE slot, u32 LE key length, the key, sorted by slot then
+ * key bytes, unique, at most 64 (checked here). Free it with gx_module_free.
+ * A version 1 module returns the four bytes of a zero count and must be
+ * given no frame records (a zero count or no bytes). On failure returns a
+ * GX_MODULE_ERR_* code.
+ */
+int32_t gx_module_inputs(const uint8_t* module, size_t module_len,
+                         const uint8_t* module_hash32,
+                         const uint8_t* request, size_t request_len,
+                         const uint8_t* frames, size_t frames_len,
+                         uint8_t** out_ptr, size_t* out_len,
+                         char* err_buf, size_t err_len);
+
+/*
+ * Loads the module as gx_module_compile does and runs the version 2
+ * gx_sources with the request and frame bytes exactly as given. Output as
+ * for gx_module_sources. A version 1 module runs its version 1 gx_sources
+ * and must be given no frame records.
+ */
+int32_t gx_module_sources2(const uint8_t* module, size_t module_len,
+                           const uint8_t* module_hash32,
+                           const uint8_t* request, size_t request_len,
+                           const uint8_t* frames, size_t frames_len,
+                           uint8_t** out_ptr, size_t* out_len,
+                           char* err_buf, size_t err_len);
+
+/*
+ * Loads the module as gx_module_compile does and runs the version 2
+ * gx_compile with the request, tile, and input bytes exactly as given
+ * (input bytes: u32 LE count, then per input u32 LE length and the section
+ * or record, in slot order). The tiles and inputs together count against
+ * the memory limit. Output as for gx_module_compile. A version 1 module runs
+ * its version 1 gx_compile and must be given no inputs.
+ */
+int32_t gx_module_compile2(const uint8_t* module, size_t module_len,
+                           const uint8_t* module_hash32,
+                           const uint8_t* request, size_t request_len,
+                           const uint8_t* tiles, size_t tiles_len,
+                           const uint8_t* inputs, size_t inputs_len,
+                           uint8_t** out_ptr, size_t* out_len,
+                           char* err_buf, size_t err_len);
+
+/*
+ * Frees a buffer returned by any gx_module_* function above, with the exact
+ * length returned. A null ptr is ignored.
  */
 void gx_module_free(uint8_t* ptr, size_t len);
 

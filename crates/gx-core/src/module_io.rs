@@ -52,8 +52,13 @@ pub const REQUEST_VERSION: u16 = 1;
 /// Length of the request before the chunk key bytes.
 pub const REQUEST_HEADER_LEN: usize = 36;
 
-/// The module ABI version `gx_abi_version` returns.
+/// The module ABI version `gx_abi_version` returns for a module that reads
+/// no inputs (`client-compute.md` section 4).
 pub const ABI_VERSION: i32 = 1;
+
+/// The module ABI version `gx_abi_version` returns for a module that reads
+/// inputs and exports `gx_inputs` (`client-compute.md` section 4.1).
+pub const ABI_VERSION_2: i32 = 2;
 
 /// One module request: the cell (or the registry), the universe's origin,
 /// and the time span the section covers.

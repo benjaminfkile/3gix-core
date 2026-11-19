@@ -4,8 +4,8 @@
 # under Node against the native conformance vectors, headless GPU compute
 # probe, vocabulary lint, native shared library builds (the core library and
 # the module host), the C ABI check program, and the module determinism
-# harness: the example module built for wasm32 and run natively through
-# gx-module-host and under Node.
+# harness: the example modules (version 1, the frame module, and version 2)
+# built for wasm32 and run natively through gx-module-host and under Node.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -47,6 +47,8 @@ diff -r target/conformance-check/timescale conformance/timescale
 diff -r target/conformance-check/integrate conformance/integrate
 diff -r target/conformance-check/light conformance/light
 diff -r target/conformance-check/module conformance/module
+diff -r target/conformance-check/module-v2 conformance/module-v2
+diff -r target/conformance-check/module-frame conformance/module-frame
 
 step "5. cargo build wasm32"
 cargo build -p gx-core --release --target wasm32-unknown-unknown
@@ -105,13 +107,20 @@ LD_LIBRARY_PATH=target/release target/abi-check/abi_check \
     conformance/frame-record/valid/j2.bin \
     conformance/frame-record/valid/disagrees-mass.bin
 
-step "12. example module for wasm32"
-cargo build -p gx-module-test --release --target wasm32-unknown-unknown
+step "12. example modules for wasm32"
+cargo build -p gx-module-test -p gx-module-frame -p gx-module-reader --release \
+    --target wasm32-unknown-unknown
 module=target/wasm32-unknown-unknown/release/gx_module_test.wasm
-ls -l "$module"
+ls -l "$module" target/wasm32-unknown-unknown/release/gx_module_frame.wasm \
+    target/wasm32-unknown-unknown/release/gx_module_reader.wasm
+sha256sum target/wasm32-unknown-unknown/release/gx_module_reader.wasm
 
 step "13. module determinism harness, native and Node"
 sh scripts/module-determinism.sh "$module" conformance/module
+sh scripts/module-determinism.sh target/wasm32-unknown-unknown/release/gx_module_frame.wasm \
+    conformance/module-frame
+sh scripts/module-determinism.sh target/wasm32-unknown-unknown/release/gx_module_reader.wasm \
+    conformance/module-v2
 
 step "13b. the harness fails on a wrong expected hash"
 rm -rf target/module-vectors-broken

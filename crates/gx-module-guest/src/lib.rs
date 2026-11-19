@@ -1,11 +1,12 @@
 //! The guest side of the module ABI: what a compiler author links to become
 //! a module.
 //!
-//! Implements `client-compute.md` section 4 (module ABI version 1) inside the
-//! module. The crate provides the memory and error exports every module
-//! needs (`gx_alloc`, `gx_free`, `gx_abi_version`, `gx_last_error`), and the
-//! [`gx_module!`] macro turns a type implementing [`Module`] into the two
-//! remaining exports, `gx_sources` and `gx_compile`, with the exact ABI:
+//! Implements `client-compute.md` section 4 (module ABI version 1) and
+//! section 4.1 (module ABI version 2) inside the module. The crate provides
+//! the memory and error exports every module needs (`gx_alloc`, `gx_free`,
+//! `gx_last_error`), and the [`gx_module!`] macro turns a type implementing
+//! [`Module`] into the remaining version 1 exports, `gx_abi_version`
+//! (returning 1), `gx_sources`, and `gx_compile`, with the exact ABI:
 //!
 //! ```
 //! use gx_module_guest::{gx_module, Module, Request, Tiles};
@@ -24,6 +25,16 @@
 //! gx_module!(MyModule);
 //! ```
 //!
+//! A module that reads inputs (`client-compute.md` section 10) implements
+//! [`ModuleV2`] instead and uses [`gx_module_v2!`], which exports
+//! `gx_abi_version` (returning 2), `gx_inputs`, and the version 2
+//! `gx_sources` and `gx_compile`. The frame records arrive decoded with
+//! [`gx_core::frame_record`], and the input sections as [`Input`] values
+//! (slot, key, bytes), paired with the entries [`ModuleV2::inputs`]
+//! returned. A frame key reaches a version 2 module with empty frame and
+//! input buffers. See [`ModuleV2`] for the one restriction this kit places
+//! on a version 2 module's config.
+//!
 //! The macro's exports decode the request and tile bytes with
 //! [`gx_core::module_io`], check that the tiles are exactly the ones
 //! [`Module::sources`] asked for, run the author's code, validate the
@@ -32,8 +43,9 @@
 //! `gx_last_error`.
 //!
 //! The exports exist only on `wasm32`, where pointers are 32 bits. On other
-//! targets the same logic is reachable through [`run_sources`] and
-//! [`run_compile`], which is how tests and conformance generators call a
+//! targets the same logic is reachable through [`run_sources`],
+//! [`run_compile`], [`run_inputs`], [`run_sources_v2`], and
+//! [`run_compile_v2`], which is how tests and conformance generators call a
 //! module natively.
 //!
 //! Build the module crate as a `cdylib` for `wasm32-unknown-unknown`. It
@@ -41,7 +53,9 @@
 //! library is linked with `default-features = false` so none of its own
 //! exports come along.
 
-use gx_core::module_io::{self, ModuleRequest, Tile};
+use gx_core::frame_record::{self, FrameRecord};
+use gx_core::key::ChunkKey;
+use gx_core::module_io::{self, InputEntry, ModuleRequest, Tile};
 
 pub use gx_core;
 
@@ -137,6 +151,192 @@ pub fn run_compile<M: Module>(request: &[u8], tiles: &[u8]) -> Result<Vec<u8>, S
         ));
     }
     let section = M::compile(&req, &tiles)?;
+    let key = req.key.to_string();
+    gx_core::validate(&key, &section)
+        .map_err(|e| format!("section for {key} failed validation: {e}"))?;
+    Ok(section)
+}
+
+/// A frames slot of a version 2 module's config: its slot index and how many
+/// frames the config lists in it (`client-compute.md` section 10).
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct FramesSlot {
+    /// The slot index in the layer's input list.
+    pub slot: u32,
+    /// The number of frames the config lists in this slot.
+    pub frames: u32,
+}
+
+/// One input section passed to [`ModuleV2::compile`]: the input list entry
+/// it answers and its bytes, which have passed the library validator.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Input<'a> {
+    /// The layer slot the section was read from.
+    pub slot: u32,
+    /// The section's chunk key in that slot's layer.
+    pub key: ChunkKey,
+    /// The section bytes; an empty section is passed as one.
+    pub bytes: &'a [u8],
+}
+
+/// A module that reads inputs: module ABI version 2 (`client-compute.md`
+/// section 4.1).
+///
+/// The module knows its own layer config by construction, and states its
+/// frames slots in [`ModuleV2::FRAMES_SLOTS`]. This kit requires every
+/// frames slot to have a lower slot index than every layer slot the module
+/// reads, so the frame records are the first inputs `gx_compile` receives;
+/// an input list that breaks this fails. All three functions must be
+/// deterministic, as for [`Module`].
+pub trait ModuleV2 {
+    /// The frames slots of the layer's config, ascending by slot.
+    const FRAMES_SLOTS: &'static [FramesSlot];
+
+    /// The input sections this request needs from the layer slots, sorted
+    /// by slot, then key bytes, unique, at most 64. A function of the
+    /// request and the frame records alone. Called with no records for a
+    /// frame key.
+    fn inputs(req: &Request, frames: &[FrameRecord]) -> Vec<InputEntry>;
+
+    /// The source tile ids this request needs, ascending and unique.
+    fn sources(req: &Request, frames: &[FrameRecord]) -> Vec<u64>;
+
+    /// The section for the request's chunk key, given the tiles, the frame
+    /// records of the frames slots in slot and config order, and the input
+    /// sections in the order [`ModuleV2::inputs`] returned their entries.
+    /// For a frame key, `frames` and `inputs` are empty.
+    fn compile(
+        req: &Request,
+        tiles: &Tiles,
+        frames: &[FrameRecord],
+        inputs: &[Input],
+    ) -> Result<Vec<u8>, String>;
+}
+
+/// The number of frame records a version 2 module's frames slots hold.
+fn record_count<M: ModuleV2>() -> usize {
+    M::FRAMES_SLOTS.iter().map(|s| s.frames as usize).sum()
+}
+
+/// Decodes a list of records or inputs; no bytes at all is the empty list.
+fn decode_list<'a>(bytes: &'a [u8], what: &str) -> Result<Vec<&'a [u8]>, String> {
+    if bytes.is_empty() {
+        return Ok(Vec::new());
+    }
+    module_io::decode_inputs(bytes).map_err(|e| format!("{what}: {e}"))
+}
+
+/// Decodes the frame records: none for a frame key, else exactly the
+/// number [`ModuleV2::FRAMES_SLOTS`] declares, each checked with
+/// [`frame_record::decode`].
+fn decode_frames<M: ModuleV2>(req: &Request, list: &[&[u8]]) -> Result<Vec<FrameRecord>, String> {
+    let want = if matches!(req.key, ChunkKey::Frame(_)) {
+        0
+    } else {
+        record_count::<M>()
+    };
+    if list.len() != want {
+        return Err(format!(
+            "frames: {} records passed, the module expects {want}",
+            list.len()
+        ));
+    }
+    list.iter()
+        .enumerate()
+        .map(|(i, b)| frame_record::decode(b).map_err(|e| format!("frame record {i}: {e}")))
+        .collect()
+}
+
+/// Asks the module for its input list and checks every slot is a layer slot
+/// above every frames slot.
+fn input_entries<M: ModuleV2>(
+    req: &Request,
+    frames: &[FrameRecord],
+) -> Result<Vec<InputEntry>, String> {
+    let entries = M::inputs(req, frames);
+    if matches!(req.key, ChunkKey::Frame(_)) && !entries.is_empty() {
+        return Err("inputs: a frame key reads no inputs".into());
+    }
+    let top = M::FRAMES_SLOTS.iter().map(|s| s.slot).max();
+    if let Some(e) = entries.iter().find(|e| top.is_some_and(|t| e.slot <= t)) {
+        return Err(format!(
+            "inputs: slot {} is not a layer slot above every frames slot",
+            e.slot
+        ));
+    }
+    Ok(entries)
+}
+
+/// The `gx_inputs` logic on safe inputs (`client-compute.md` section 4.1):
+/// decodes the request and the frame records, asks the module, and encodes
+/// the input list.
+pub fn run_inputs<M: ModuleV2>(request: &[u8], frames: &[u8]) -> Result<Vec<u8>, String> {
+    let req = module_io::decode_request(request).map_err(|e| format!("request: {e}"))?;
+    let frames = decode_frames::<M>(&req, &decode_list(frames, "frames")?)?;
+    let entries = input_entries::<M>(&req, &frames)?;
+    module_io::encode_input_list(&entries).map_err(|e| format!("inputs: {e}"))
+}
+
+/// The version 2 `gx_sources` logic on safe inputs: decodes the request and
+/// the frame records, asks the module, and encodes the id list.
+pub fn run_sources_v2<M: ModuleV2>(request: &[u8], frames: &[u8]) -> Result<Vec<u8>, String> {
+    let req = module_io::decode_request(request).map_err(|e| format!("request: {e}"))?;
+    let frames = decode_frames::<M>(&req, &decode_list(frames, "frames")?)?;
+    let ids = M::sources(&req, &frames);
+    module_io::encode_source_ids(&ids).map_err(|e| format!("sources: {e}"))
+}
+
+/// The version 2 `gx_compile` logic on safe inputs: decodes the request,
+/// the tiles, and the inputs, takes the frame records from the first
+/// inputs, checks the tiles and the remaining inputs are the ones the module
+/// asks for, compiles, and validates the section under the request's chunk
+/// key with the library validator.
+pub fn run_compile_v2<M: ModuleV2>(
+    request: &[u8],
+    tiles: &[u8],
+    inputs: &[u8],
+) -> Result<Vec<u8>, String> {
+    let req = module_io::decode_request(request).map_err(|e| format!("request: {e}"))?;
+    let tiles = module_io::decode_tiles(tiles).map_err(|e| format!("tiles: {e}"))?;
+    let tiles = Tiles::new(tiles);
+    let list = decode_list(inputs, "inputs")?;
+    let n = if matches!(req.key, ChunkKey::Frame(_)) {
+        0
+    } else {
+        record_count::<M>()
+    };
+    if list.len() < n {
+        return Err(format!(
+            "inputs: {} passed, the frames slots alone hold {n} records",
+            list.len()
+        ));
+    }
+    let frames = decode_frames::<M>(&req, &list[..n])?;
+    let entries = input_entries::<M>(&req, &frames)?;
+    if list.len() - n != entries.len() {
+        return Err(format!(
+            "inputs: {} sections passed, the module asked for {}",
+            list.len() - n,
+            entries.len()
+        ));
+    }
+    let inputs: Vec<Input<'_>> = entries
+        .iter()
+        .zip(&list[n..])
+        .map(|(e, b)| Input {
+            slot: e.slot,
+            key: e.key,
+            bytes: b,
+        })
+        .collect();
+    let want = M::sources(&req, &frames);
+    if !tiles.ids().eq(want.iter().copied()) {
+        let got: Vec<u64> = tiles.ids().collect();
+        return Err(format!(
+            "tiles: ids {got:?} passed, the module asked for {want:?}"
+        ));
+    }
+    let section = M::compile(&req, &tiles, &frames, &inputs)?;
     let key = req.key.to_string();
     gx_core::validate(&key, &section)
         .map_err(|e| format!("section for {key} failed validation: {e}"))?;
@@ -249,13 +449,6 @@ pub mod abi {
         }
     }
 
-    /// `gx_abi_version`: returns 1.
-    #[cfg(target_arch = "wasm32")]
-    #[no_mangle]
-    pub extern "C" fn gx_abi_version() -> i32 {
-        gx_core::module_io::ABI_VERSION
-    }
-
     /// `gx_alloc`: allocates `len` bytes for the host to write into.
     #[cfg(target_arch = "wasm32")]
     #[no_mangle]
@@ -286,9 +479,11 @@ pub mod abi {
     }
 }
 
-/// Exports `gx_sources` and `gx_compile` for a type implementing
-/// [`Module`], with the exact ABI of `client-compute.md` section 4.
+/// Exports `gx_abi_version`, `gx_sources`, and `gx_compile` for a type
+/// implementing [`Module`], with the exact ABI of `client-compute.md`
+/// section 4.
 ///
+/// `gx_abi_version() -> i32` returns 1.
 /// `gx_sources(req_ptr, req_len) -> i64` returns `(ptr << 32) | len` of the
 /// `u64` LE id list, or -1 with a reason for `gx_last_error` if the request
 /// does not decode or the ids are not ascending and unique.
@@ -299,6 +494,13 @@ pub mod abi {
 #[macro_export]
 macro_rules! gx_module {
     ($module:ty) => {
+        /// `gx_abi_version`: module ABI version 1.
+        #[cfg(target_arch = "wasm32")]
+        #[no_mangle]
+        pub extern "C" fn gx_abi_version() -> i32 {
+            $crate::gx_core::module_io::ABI_VERSION
+        }
+
         /// `gx_sources`: the source tile ids the request needs.
         ///
         /// # Safety
@@ -345,6 +547,119 @@ macro_rules! gx_module {
         /// Checks at compile time that the type implements the trait.
         const _: fn() = || {
             fn is_module<M: $crate::Module>() {}
+            is_module::<$module>();
+        };
+    };
+}
+
+/// Exports `gx_abi_version`, `gx_inputs`, and the version 2 `gx_sources`
+/// and `gx_compile` for a type implementing [`ModuleV2`], with the exact
+/// ABI of `client-compute.md` section 4.1.
+///
+/// `gx_abi_version() -> i32` returns 2.
+/// `gx_inputs(req_ptr, req_len, frames_ptr, frames_len) -> i64` returns
+/// `(ptr << 32) | len` of the input list. `gx_sources(req_ptr, req_len,
+/// frames_ptr, frames_len) -> i64` returns the id list.
+/// `gx_compile(req_ptr, req_len, tiles_ptr, tiles_len, inputs_ptr,
+/// inputs_len) -> i64` returns the validated section. Each returns -1 with
+/// a reason for `gx_last_error` on failure. Use it once per module crate,
+/// at the crate root, instead of [`gx_module!`].
+#[macro_export]
+macro_rules! gx_module_v2 {
+    ($module:ty) => {
+        /// `gx_abi_version`: module ABI version 2.
+        #[cfg(target_arch = "wasm32")]
+        #[no_mangle]
+        pub extern "C" fn gx_abi_version() -> i32 {
+            $crate::gx_core::module_io::ABI_VERSION_2
+        }
+
+        /// `gx_inputs`: the input sections the request needs.
+        ///
+        /// # Safety
+        ///
+        /// The host passes blocks it wrote with `gx_alloc`.
+        #[cfg(target_arch = "wasm32")]
+        #[no_mangle]
+        pub unsafe extern "C" fn gx_inputs(
+            req_ptr: i32,
+            req_len: i32,
+            frames_ptr: i32,
+            frames_len: i32,
+        ) -> i64 {
+            // SAFETY: the host wrote the two blocks.
+            let r = unsafe {
+                $crate::abi::input(req_ptr as usize as *const u8, req_len).and_then(|req| {
+                    $crate::abi::input(frames_ptr as usize as *const u8, frames_len)
+                        .and_then(|frames| $crate::run_inputs::<$module>(req, frames))
+                })
+            };
+            $crate::abi::finish(r)
+        }
+
+        /// `gx_sources`: the source tile ids the request needs.
+        ///
+        /// # Safety
+        ///
+        /// The host passes blocks it wrote with `gx_alloc`.
+        #[cfg(target_arch = "wasm32")]
+        #[no_mangle]
+        pub unsafe extern "C" fn gx_sources(
+            req_ptr: i32,
+            req_len: i32,
+            frames_ptr: i32,
+            frames_len: i32,
+        ) -> i64 {
+            // SAFETY: the host wrote the two blocks.
+            let r = unsafe {
+                $crate::abi::input(req_ptr as usize as *const u8, req_len).and_then(|req| {
+                    $crate::abi::input(frames_ptr as usize as *const u8, frames_len)
+                        .and_then(|frames| $crate::run_sources_v2::<$module>(req, frames))
+                })
+            };
+            $crate::abi::finish(r)
+        }
+
+        /// `gx_compile`: the validated section for the request.
+        ///
+        /// # Safety
+        ///
+        /// The host passes blocks it wrote with `gx_alloc`.
+        #[cfg(target_arch = "wasm32")]
+        #[no_mangle]
+        pub unsafe extern "C" fn gx_compile(
+            req_ptr: i32,
+            req_len: i32,
+            tiles_ptr: i32,
+            tiles_len: i32,
+            inputs_ptr: i32,
+            inputs_len: i32,
+        ) -> i64 {
+            // SAFETY: the host wrote the three blocks.
+            let r = unsafe {
+                $crate::abi::input(req_ptr as usize as *const u8, req_len).and_then(|req| {
+                    $crate::abi::input(tiles_ptr as usize as *const u8, tiles_len).and_then(
+                        |tiles| {
+                            $crate::abi::input(inputs_ptr as usize as *const u8, inputs_len)
+                                .and_then(|inputs| {
+                                    $crate::run_compile_v2::<$module>(req, tiles, inputs)
+                                })
+                        },
+                    )
+                })
+            };
+            $crate::abi::finish(r)
+        }
+
+        /// Keeps the library's exports linked into the module.
+        #[cfg(target_arch = "wasm32")]
+        #[used]
+        static GX_MODULE_GUEST_EXPORTS: [unsafe extern "C" fn(i32, i32); 1] =
+            [$crate::abi::gx_free];
+
+        /// Checks at compile time that the type implements the trait.
+        const _: fn() = || {
+            fn is_module<M: $crate::ModuleV2>() {}
             is_module::<$module>();
         };
     };

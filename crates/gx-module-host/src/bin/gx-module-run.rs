@@ -10,6 +10,12 @@
 //! if any vector fails. This is the native half of
 //! `scripts/module-determinism.sh` (`client-compute.md` section 4,
 //! `space-model.md` section 4 item 6).
+//!
+//! For a version 2 module (`client-compute.md` section 4.1) every vector
+//! also has `NAME.frames.bin`, `NAME.input-list.bin`, and `NAME.inputs.bin`:
+//! it runs `gx_inputs` with the frame bytes and checks the list equals
+//! `NAME.input-list.bin`, runs `gx_sources` with the frame bytes, and runs
+//! `gx_compile` with the tile and input bytes.
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -35,14 +41,36 @@ fn run_one(host: &gx_module_host::LoadedModule, dir: &Path, name: &str) -> Resul
         .iter()
         .map(|t| t.id)
         .collect();
-    let ids = host.sources_raw(&request).map_err(|e| e.to_string())?;
+    let v2 = host.abi_version() == module_io::ABI_VERSION_2;
+    let (frames, inputs) = if v2 {
+        (read("frames.bin")?, read("inputs.bin")?)
+    } else {
+        (Vec::new(), Vec::new())
+    };
+    if v2 {
+        let list = host
+            .inputs_raw(&request, &frames)
+            .map_err(|e| e.to_string())?;
+        if list != read("input-list.bin")? {
+            return Err("input list differs from input-list.bin".into());
+        }
+    }
+    let ids = if v2 {
+        host.sources_v2_raw(&request, &frames)
+    } else {
+        host.sources_raw(&request)
+    }
+    .map_err(|e| e.to_string())?;
     let ids = module_io::decode_source_ids(&ids).map_err(|e| format!("sources: {e}"))?;
     if ids != want {
         return Err(format!("sources {ids:?}, tiles carry {want:?}"));
     }
-    let section = host
-        .compile_raw(&request, &tiles)
-        .map_err(|e| e.to_string())?;
+    let section = if v2 {
+        host.compile_v2_raw(&request, &tiles, &inputs)
+    } else {
+        host.compile_raw(&request, &tiles)
+    }
+    .map_err(|e| e.to_string())?;
     gx_core::validate(&req.key.to_string(), &section).map_err(|e| format!("section: {e}"))?;
     let got = to_hex(&sha256(&section));
     if got != expected {
