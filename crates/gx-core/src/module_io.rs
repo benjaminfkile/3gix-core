@@ -24,10 +24,24 @@
 //! Source id list, returned by `gx_sources`: `u64` LE ids, ascending and
 //! unique, possibly none.
 //!
+//! Module ABI version 2 (section 4.1) adds two formats.
+//!
+//! Input list, returned by `gx_inputs`: a `u32` LE count, then per entry a
+//! `u32` LE slot, a `u32` LE key length, and the chunk key (UTF-8). Entries
+//! are sorted by slot, then by key bytes, unique, and at most
+//! [`MAX_INPUT_ENTRIES`]. Whether each slot is a layer slot of the config is
+//! the host's check, not this module's.
+//!
+//! Input bytes, passed to `gx_compile`, and frame bytes, passed to
+//! `gx_inputs` and `gx_sources`: a `u32` LE count, then per input a `u32` LE
+//! length and the bytes. [`inputs_sha256`] is the `X-Inputs-Sha256` hash
+//! over them (section 10.4).
+//!
 //! Every encoder output is a pure function of its input.
 
 use crate::error::{codes, ValidationError};
 use crate::key::ChunkKey;
+use crate::sha256::{Sha256, DIGEST_LEN};
 
 /// The four magic bytes that open a request: `3GXQ` in ASCII.
 pub const REQUEST_MAGIC: [u8; 4] = *b"3GXQ";
@@ -313,6 +327,233 @@ pub fn decode_source_ids(bytes: &[u8]) -> Result<Vec<u64>, ValidationError> {
     Ok(out)
 }
 
+/// The most entries an input list may hold (`client-compute.md` section
+/// 4.1).
+pub const MAX_INPUT_ENTRIES: usize = 64;
+
+/// One input list entry: a slot of the reading layer's config and a chunk
+/// key of the layer in that slot.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InputEntry {
+    /// The slot index in the reading layer's input list.
+    pub slot: u32,
+    /// The key of the input section.
+    pub key: ChunkKey,
+}
+
+fn entry_order(a: &(u32, String), b: &(u32, String)) -> core::cmp::Ordering {
+    a.0.cmp(&b.0)
+        .then_with(|| a.1.as_bytes().cmp(b.1.as_bytes()))
+}
+
+fn not_sorted(i: usize) -> ValidationError {
+    ValidationError::new(
+        codes::INPUT_LIST_NOT_SORTED,
+        format!("entry {i}: not after the previous entry by slot, then key bytes, or equal to it"),
+    )
+}
+
+fn too_many(n: u64) -> ValidationError {
+    ValidationError::new(
+        codes::INPUT_LIST_TOO_MANY,
+        format!("count: {n} entries, at most {MAX_INPUT_ENTRIES}"),
+    )
+}
+
+/// Encodes an input list as `gx_inputs` returns it (`client-compute.md`
+/// section 4.1).
+///
+/// Fails with 1032 for more than 64 entries, or with 1036 if the entries are
+/// not strictly ascending by slot, then by key bytes.
+pub fn encode_input_list(entries: &[InputEntry]) -> Result<Vec<u8>, ValidationError> {
+    if entries.len() > MAX_INPUT_ENTRIES {
+        return Err(too_many(entries.len() as u64));
+    }
+    let keyed: Vec<(u32, String)> = entries
+        .iter()
+        .map(|e| (e.slot, e.key.to_string()))
+        .collect();
+    let mut out = Vec::new();
+    out.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+    for (i, (slot, key)) in keyed.iter().enumerate() {
+        if i > 0 && entry_order(&keyed[i - 1], &keyed[i]) != core::cmp::Ordering::Less {
+            return Err(not_sorted(i));
+        }
+        out.extend_from_slice(&slot.to_le_bytes());
+        out.extend_from_slice(&(key.len() as u32).to_le_bytes());
+        out.extend_from_slice(key.as_bytes());
+    }
+    Ok(out)
+}
+
+/// Decodes and validates an input list returned by `gx_inputs`.
+///
+/// Checks, in order, and reports the first failing rule: length at least 4
+/// (1031), count at most 64 (1032), then entry by entry: slot, key length,
+/// and key within the input (1033), a key that is UTF-8 and a chunk key
+/// (1035), and the entry after the previous one by slot, then key bytes
+/// (1036), and finally no bytes after the last entry (1034).
+pub fn decode_input_list(bytes: &[u8]) -> Result<Vec<InputEntry>, ValidationError> {
+    if bytes.len() < 4 {
+        return Err(ValidationError::new(
+            codes::INPUT_LIST_TOO_SHORT,
+            format!("length: {} bytes, count needs 4", bytes.len()),
+        ));
+    }
+    let count = u32_at(bytes, 0);
+    if count as usize > MAX_INPUT_ENTRIES {
+        return Err(too_many(u64::from(count)));
+    }
+    let mut at = 4usize;
+    let mut prev: Option<(u32, String)> = None;
+    let mut out = Vec::with_capacity(count as usize);
+    for i in 0..count as usize {
+        if bytes.len() - at < 8 {
+            return Err(ValidationError::new(
+                codes::INPUT_LIST_TRUNCATED,
+                format!(
+                    "entry {i}: slot and key length need 8 bytes at offset {at}, {} remain",
+                    bytes.len() - at
+                ),
+            ));
+        }
+        let slot = u32_at(bytes, at);
+        let len = u32_at(bytes, at + 4) as usize;
+        at += 8;
+        if bytes.len() - at < len {
+            return Err(ValidationError::new(
+                codes::INPUT_LIST_TRUNCATED,
+                format!(
+                    "entry {i}: key of {len} bytes at offset {at}, {} remain",
+                    bytes.len() - at
+                ),
+            ));
+        }
+        let raw = &bytes[at..at + len];
+        at += len;
+        let text = core::str::from_utf8(raw).map_err(|e| {
+            ValidationError::new(
+                codes::INPUT_LIST_KEY_MALFORMED,
+                format!("entry {i}: key not UTF-8 at byte {}", e.valid_up_to()),
+            )
+        })?;
+        let key = text.parse::<ChunkKey>().map_err(|e| {
+            ValidationError::new(
+                codes::INPUT_LIST_KEY_MALFORMED,
+                format!("entry {i}: key: {e}"),
+            )
+        })?;
+        let this = (slot, text.to_owned());
+        if let Some(p) = &prev {
+            if entry_order(p, &this) != core::cmp::Ordering::Less {
+                return Err(not_sorted(i));
+            }
+        }
+        prev = Some(this);
+        out.push(InputEntry { slot, key });
+    }
+    if at != bytes.len() {
+        return Err(ValidationError::new(
+            codes::INPUT_LIST_TRAILING_BYTES,
+            format!(
+                "{} bytes follow the last entry at offset {at}",
+                bytes.len() - at
+            ),
+        ));
+    }
+    Ok(out)
+}
+
+/// Encodes input bytes for `gx_compile`, or frame bytes for `gx_inputs` and
+/// `gx_sources` (`client-compute.md` section 4.1): count, then length and
+/// bytes per input, in the order given.
+///
+/// Fails with 1037 if there are more inputs than a `u32` counts or an input
+/// is longer than a `u32` holds.
+pub fn encode_inputs(inputs: &[&[u8]]) -> Result<Vec<u8>, ValidationError> {
+    let too_large = |what: String| ValidationError::new(codes::INPUTS_TRUNCATED, what);
+    let count = u32::try_from(inputs.len())
+        .map_err(|_| too_large(format!("count: {} inputs do not fit a u32", inputs.len())))?;
+    let total: usize = inputs.iter().map(|b| 4 + b.len()).sum();
+    let mut out = Vec::with_capacity(4 + total);
+    out.extend_from_slice(&count.to_le_bytes());
+    for (i, b) in inputs.iter().enumerate() {
+        let len = u32::try_from(b.len()).map_err(|_| {
+            too_large(format!(
+                "input {i}: {} bytes do not fit a u32 length",
+                b.len()
+            ))
+        })?;
+        out.extend_from_slice(&len.to_le_bytes());
+        out.extend_from_slice(b);
+    }
+    Ok(out)
+}
+
+/// Decodes input bytes or frame bytes, borrowing each input from `bytes`.
+///
+/// Checks, in order, and reports the first failing rule: length at least 4
+/// and every length and input within the bytes (1037), and no bytes after
+/// the last input (1038).
+pub fn decode_inputs(bytes: &[u8]) -> Result<Vec<&[u8]>, ValidationError> {
+    if bytes.len() < 4 {
+        return Err(ValidationError::new(
+            codes::INPUTS_TRUNCATED,
+            format!("length: {} bytes, count needs 4", bytes.len()),
+        ));
+    }
+    let count = u32_at(bytes, 0);
+    let mut at = 4usize;
+    // Never trust `count` for an allocation: each input takes at least 4
+    // bytes.
+    let mut out = Vec::with_capacity((count as usize).min(bytes.len() / 4));
+    for i in 0..count as usize {
+        if bytes.len() - at < 4 {
+            return Err(ValidationError::new(
+                codes::INPUTS_TRUNCATED,
+                format!(
+                    "input {i}: length needs 4 bytes at offset {at}, {} remain",
+                    bytes.len() - at
+                ),
+            ));
+        }
+        let len = u32_at(bytes, at) as usize;
+        at += 4;
+        if bytes.len() - at < len {
+            return Err(ValidationError::new(
+                codes::INPUTS_TRUNCATED,
+                format!(
+                    "input {i}: {len} bytes at offset {at}, {} remain",
+                    bytes.len() - at
+                ),
+            ));
+        }
+        out.push(&bytes[at..at + len]);
+        at += len;
+    }
+    if at != bytes.len() {
+        return Err(ValidationError::new(
+            codes::INPUTS_TRAILING_BYTES,
+            format!(
+                "{} bytes follow the last input at offset {at}",
+                bytes.len() - at
+            ),
+        ));
+    }
+    Ok(out)
+}
+
+/// The `X-Inputs-Sha256` hash (`client-compute.md` section 10.4): SHA-256
+/// over the 32-byte SHA-256 of each input, in the order passed to
+/// `gx_compile`. Write it as lowercase hex with [`crate::sha256::to_hex`].
+pub fn inputs_sha256(inputs: &[&[u8]]) -> [u8; DIGEST_LEN] {
+    let mut h = Sha256::new();
+    for b in inputs {
+        h.update(&crate::sha256::sha256(b));
+    }
+    h.finish()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -439,5 +680,81 @@ mod tests {
         let mut swapped = b[8..16].to_vec();
         swapped.extend_from_slice(&b[0..8]);
         assert_eq!(code(decode_source_ids(&swapped)), 952);
+    }
+
+    fn entry(slot: u32, key: &str) -> InputEntry {
+        InputEntry {
+            slot,
+            key: key.parse().unwrap(),
+        }
+    }
+
+    #[test]
+    fn input_list_round_trip_and_rules() {
+        let entries = [
+            entry(0, "1-0-0-0-0"),
+            entry(0, "registry"),
+            entry(2, "frame-3"),
+        ];
+        let b = encode_input_list(&entries).unwrap();
+        assert_eq!(&b[0..4], &3u32.to_le_bytes());
+        assert_eq!(&b[4..8], &0u32.to_le_bytes());
+        assert_eq!(&b[8..12], &9u32.to_le_bytes());
+        assert_eq!(&b[12..21], b"1-0-0-0-0");
+        assert_eq!(decode_input_list(&b).unwrap(), entries);
+        assert!(decode_input_list(&[0, 0, 0, 0]).unwrap().is_empty());
+
+        assert_eq!(code(decode_input_list(&b[..3])), 1031);
+        assert_eq!(code(decode_input_list(&[65, 0, 0, 0])), 1032);
+        assert_eq!(code(decode_input_list(&b[..b.len() - 1])), 1033);
+        let mut t = b.clone();
+        t.push(0);
+        assert_eq!(code(decode_input_list(&t)), 1034);
+        let mut k = b.clone();
+        k[12] = b'x';
+        assert_eq!(code(decode_input_list(&k)), 1035);
+        let mut k = b.clone();
+        k[12] = 0xff;
+        assert_eq!(code(decode_input_list(&k)), 1035);
+        let swapped = encode_input_list(&entries[..1])
+            .unwrap()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let mut dup = vec![2, 0, 0, 0];
+        dup.extend_from_slice(&swapped[4..]);
+        dup.extend_from_slice(&swapped[4..]);
+        assert_eq!(code(decode_input_list(&dup)), 1036);
+        assert_eq!(
+            code(encode_input_list(&[
+                entry(1, "registry"),
+                entry(0, "registry")
+            ])),
+            1036
+        );
+        let many: Vec<InputEntry> = (0..65).map(|s| entry(s, "registry")).collect();
+        assert_eq!(code(encode_input_list(&many)), 1032);
+        assert!(encode_input_list(&many[..64]).is_ok());
+    }
+
+    #[test]
+    fn inputs_round_trip_and_hash() {
+        let a: &[u8] = b"abc";
+        let inputs = [a, &[][..], b"z"];
+        let b = encode_inputs(&inputs).unwrap();
+        assert_eq!(b.len(), 4 + 12 + 4);
+        assert_eq!(decode_inputs(&b).unwrap(), inputs);
+        assert_eq!(code(decode_inputs(&b[..3])), 1037);
+        assert_eq!(code(decode_inputs(&b[..b.len() - 1])), 1037);
+        assert_eq!(code(decode_inputs(&[0xff, 0xff, 0xff, 0xff])), 1037);
+        let mut t = b.clone();
+        t.push(1);
+        assert_eq!(code(decode_inputs(&t)), 1038);
+
+        let mut pre = Vec::new();
+        for i in inputs {
+            pre.extend_from_slice(&crate::sha256::sha256(i));
+        }
+        assert_eq!(inputs_sha256(&inputs), crate::sha256::sha256(&pre));
+        assert_eq!(inputs_sha256(&[]), crate::sha256::sha256(b""));
     }
 }

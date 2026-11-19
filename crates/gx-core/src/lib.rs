@@ -72,12 +72,18 @@
 //! - The C ABI (`matter-format.md` sections 7 and 11.4, `client-compute.md`
 //!   sections 3, 5.1, and 5.4): [`gx_format_version`], [`gx_validate`],
 //!   [`gx_error_name`], [`gx_section_address`], [`gx_manifest_validate`],
-//!   [`gx_epochs_validate`], [`gx_epochs_manifest`], and
-//!   [`gx_frame_record_agrees`], declared in
+//!   [`gx_epochs_validate`], [`gx_epochs_manifest`],
+//!   [`gx_frame_record_agrees`], and the layer input functions of
+//!   `client-compute.md` sections 3, 4.1, 10.3, 10.4, and 10.5:
+//!   [`gx_layer_identity`], [`gx_section_address_v2`],
+//!   [`gx_frames_slot_value`], [`gx_inputs_sha256`], [`gx_input_span_index`],
+//!   [`gx_input_list_validate`], and [`gx_input_list_entry`], declared in
 //!   `include/gx_core.h`.
 //! - WebAssembly exports, on `wasm32` only: `format_version`, `validate`,
 //!   `decode_chunk_mass`, `section_address`, `manifest_validate`,
 //!   `epochs_validate`, `epochs_manifest`,
+//!   `layer_identity`, `section_address_v2`, `frames_slot_value`,
+//!   `inputs_sha256`, `input_span_index`, `input_list_validate`,
 //!   `utc_ms_to_tdb_seconds`, `tdb_seconds_to_utc_ms`,
 //!   `integrate_registry`, and `light_retarded_state`, built with
 //!   `wasm-bindgen`.
@@ -215,6 +221,26 @@ pub unsafe extern "C" fn gx_validate(
     }
 }
 
+/// A chunk key from the C ABI: 207 for a null pointer with a non-zero
+/// length, 206 for bytes that are not UTF-8 or not a chunk key.
+fn parse_key_ffi(key: Option<&[u8]>) -> Result<key::ChunkKey, ValidationError> {
+    let key = key.ok_or_else(|| {
+        ValidationError::new(
+            codes::KEY_POINTER_NULL,
+            "key: null pointer with non-zero key_len",
+        )
+    })?;
+    core::str::from_utf8(key)
+        .map_err(|e| {
+            ValidationError::new(
+                codes::KEY_MALFORMED,
+                format!("key: not UTF-8 at byte {}", e.valid_up_to()),
+            )
+        })?
+        .parse::<key::ChunkKey>()
+        .map_err(|e| ValidationError::new(codes::KEY_MALFORMED, format!("key: {e}")))
+}
+
 /// The C ABI section address, on safe inputs: null pointer and key checks,
 /// then [`address::section_address`].
 fn section_address_ffi(
@@ -228,21 +254,7 @@ fn section_address_ffi(
     let module = module.ok_or_else(|| {
         ValidationError::new(codes::ADDRESS_POINTER_NULL, "module32: null pointer")
     })?;
-    let key = key.ok_or_else(|| {
-        ValidationError::new(
-            codes::KEY_POINTER_NULL,
-            "key: null pointer with non-zero key_len",
-        )
-    })?;
-    let key = core::str::from_utf8(key)
-        .map_err(|e| {
-            ValidationError::new(
-                codes::KEY_MALFORMED,
-                format!("key: not UTF-8 at byte {}", e.valid_up_to()),
-            )
-        })?
-        .parse::<key::ChunkKey>()
-        .map_err(|e| ValidationError::new(codes::KEY_MALFORMED, format!("key: {e}")))?;
+    let key = parse_key_ffi(key)?;
     Ok(address::section_address(
         module,
         manifest,
@@ -557,6 +569,373 @@ unsafe fn write_reason(buf: *mut u8, cap: usize, reason: &str) {
     }
 }
 
+fn identity_null(what: &str) -> ValidationError {
+    ValidationError::new(
+        codes::IDENTITY_POINTER_NULL,
+        format!("{what}: null pointer"),
+    )
+}
+
+/// The C ABI identity and version 2 address, on safe inputs: null pointer,
+/// slot, and key checks, then [`address::layer_identity`] (no key) or
+/// [`address::section_address_v2`].
+fn identity_ffi(
+    module: Option<&[u8; 32]>,
+    manifest: Option<&[u8; 32]>,
+    origin_utc_ms: i64,
+    span_seconds: u64,
+    span_index: u64,
+    slots: Option<&[u8]>,
+    key: Option<Option<&[u8]>>,
+) -> Result<[u8; 32], ValidationError> {
+    let module = module.ok_or_else(|| identity_null("module32"))?;
+    let slots = slots.ok_or_else(|| identity_null("slots with non-zero slots_len"))?;
+    let slots = address::SlotValue::decode_all(slots)?;
+    match key {
+        None => address::layer_identity(
+            module,
+            manifest,
+            origin_utc_ms,
+            span_seconds,
+            span_index,
+            &slots,
+        ),
+        Some(key) => {
+            let key = parse_key_ffi(key)?;
+            address::section_address_v2(
+                module,
+                manifest,
+                origin_utc_ms,
+                span_seconds,
+                span_index,
+                &slots,
+                &key,
+            )
+        }
+    }
+}
+
+/// Writes 32 bytes to a non-null `out32`, or returns the error's code.
+///
+/// # Safety
+///
+/// A non-null `out32` must be valid for 32 writable bytes.
+unsafe fn out_hash(out32: *mut u8, r: Result<[u8; 32], ValidationError>) -> i32 {
+    match r {
+        Ok(h) => {
+            // SAFETY: the caller guarantees `out32` is valid for 32 bytes.
+            unsafe { core::ptr::copy_nonoverlapping(h.as_ptr(), out32, 32) };
+            0
+        }
+        Err(e) => i32::from(e.code),
+    }
+}
+
+/// Computes a layer's identity at a span (`client-compute.md` section 10.5)
+/// and writes its 32 bytes to `out32`.
+///
+/// The arguments are those of [`gx_section_address`] without the key, with
+/// `manifest32_or_null` the manifest of span `span_index` under the epoch
+/// rule, plus the layer's input slots in slot order: `slots_len` bytes,
+/// `count * 33`, each a kind byte (0 layer slot, 1 frames slot) and a 32-byte
+/// value. A layer with no slots has an identity too.
+///
+/// Returns 0 on success, 1045 for a null `module32` or `out32` or a null
+/// `slots` with a non-zero `slots_len`, 1043 for a `slots_len` that is not a
+/// multiple of 33, and 1042 for an unknown kind byte. On failure `out32` is
+/// not touched.
+///
+/// # Safety
+///
+/// A non-null `module32` and `manifest32_or_null` must each be valid for 32
+/// readable bytes, a non-null `slots` for `slots_len` readable bytes, and a
+/// non-null `out32` for 32 writable bytes.
+#[cfg_attr(feature = "exports", no_mangle)]
+pub unsafe extern "C" fn gx_layer_identity(
+    module32: *const u8,
+    manifest32_or_null: *const u8,
+    origin_utc_ms: i64,
+    span_seconds: u64,
+    span_index: u64,
+    slots: *const u8,
+    slots_len: usize,
+    out32: *mut u8,
+) -> i32 {
+    if out32.is_null() {
+        return i32::from(codes::IDENTITY_POINTER_NULL);
+    }
+    // SAFETY: the caller guarantees each non-null pointer is valid for its
+    // length, 32 bytes for the hashes.
+    let r = unsafe {
+        identity_ffi(
+            module32.cast::<[u8; 32]>().as_ref(),
+            manifest32_or_null.cast::<[u8; 32]>().as_ref(),
+            origin_utc_ms,
+            span_seconds,
+            span_index,
+            slice(slots, slots_len),
+            None,
+        )
+    };
+    // SAFETY: `out32` is non-null and valid for 32 bytes.
+    unsafe { out_hash(out32, r) }
+}
+
+/// Computes a version 2 section address (`client-compute.md` section 3) and
+/// writes its 32 bytes to `out32`.
+///
+/// The arguments are those of [`gx_section_address`] with the slots of
+/// [`gx_layer_identity`] before the key. Returns 0 on success, 1041 for no
+/// slots (a layer without inputs uses [`gx_section_address`]), the codes of
+/// [`gx_layer_identity`], 207 for a null `key` with a non-zero `key_len`, and
+/// 206 for a key that is not UTF-8 or not a chunk key. On failure `out32` is
+/// not touched.
+///
+/// # Safety
+///
+/// As [`gx_layer_identity`], and a non-null `key` must be valid for
+/// `key_len` readable bytes.
+#[cfg_attr(feature = "exports", no_mangle)]
+pub unsafe extern "C" fn gx_section_address_v2(
+    module32: *const u8,
+    manifest32_or_null: *const u8,
+    origin_utc_ms: i64,
+    span_seconds: u64,
+    span_index: u64,
+    slots: *const u8,
+    slots_len: usize,
+    key: *const u8,
+    key_len: usize,
+    out32: *mut u8,
+) -> i32 {
+    if out32.is_null() {
+        return i32::from(codes::IDENTITY_POINTER_NULL);
+    }
+    // SAFETY: the caller guarantees each non-null pointer is valid for its
+    // length, 32 bytes for the hashes.
+    let r = unsafe {
+        identity_ffi(
+            module32.cast::<[u8; 32]>().as_ref(),
+            manifest32_or_null.cast::<[u8; 32]>().as_ref(),
+            origin_utc_ms,
+            span_seconds,
+            span_index,
+            slice(slots, slots_len),
+            Some(slice(key, key_len)),
+        )
+    };
+    // SAFETY: `out32` is non-null and valid for 32 bytes.
+    unsafe { out_hash(out32, r) }
+}
+
+/// The C ABI frames slot value, on safe inputs.
+fn frames_slot_value_ffi(hashes: Option<&[u8]>) -> Result<[u8; 32], ValidationError> {
+    let hashes = hashes.ok_or_else(|| identity_null("hashes with non-zero hashes_len"))?;
+    let (records, rest) = hashes.as_chunks::<32>();
+    if !rest.is_empty() {
+        return Err(ValidationError::new(
+            codes::SLOTS_LENGTH,
+            format!("hashes: {} bytes is not a multiple of 32", hashes.len()),
+        ));
+    }
+    Ok(address::frames_slot_value(records))
+}
+
+/// Computes a frames slot's value (`client-compute.md` section 10.5) from
+/// `hashes_len` bytes holding the 32-byte hashes of its frame records, in
+/// the order the config lists the frames, and writes it to `out32`.
+///
+/// Returns 0 on success, 1045 for a null `out32` or a null `hashes` with a
+/// non-zero `hashes_len`, and 1043 for a length that is not a multiple of
+/// 32. On failure `out32` is not touched.
+///
+/// # Safety
+///
+/// A non-null `hashes` must be valid for `hashes_len` readable bytes and a
+/// non-null `out32` for 32 writable bytes.
+#[cfg_attr(feature = "exports", no_mangle)]
+pub unsafe extern "C" fn gx_frames_slot_value(
+    hashes: *const u8,
+    hashes_len: usize,
+    out32: *mut u8,
+) -> i32 {
+    if out32.is_null() {
+        return i32::from(codes::IDENTITY_POINTER_NULL);
+    }
+    // SAFETY: the caller guarantees `hashes` is valid for its length and
+    // `out32` for 32 bytes.
+    unsafe { out_hash(out32, frames_slot_value_ffi(slice(hashes, hashes_len))) }
+}
+
+/// The C ABI inputs hash, on safe inputs.
+fn inputs_sha256_ffi(inputs: Option<&[u8]>) -> Result<[u8; 32], ValidationError> {
+    let inputs = inputs.ok_or_else(|| {
+        ValidationError::new(
+            codes::INPUT_ARGUMENT,
+            "inputs: null pointer with non-zero inputs_len",
+        )
+    })?;
+    Ok(module_io::inputs_sha256(&module_io::decode_inputs(inputs)?))
+}
+
+/// Computes the `X-Inputs-Sha256` hash (`client-compute.md` section 10.4)
+/// of input bytes as passed to `gx_compile` (`u32` count, then per input a
+/// `u32` length and the bytes) and writes its 32 bytes to `out32`.
+///
+/// Returns 0 on success, 1039 for a null `out32` or a null `inputs` with a
+/// non-zero `inputs_len`, and 1037 or 1038 for malformed input bytes. On
+/// failure `out32` is not touched.
+///
+/// # Safety
+///
+/// A non-null `inputs` must be valid for `inputs_len` readable bytes and a
+/// non-null `out32` for 32 writable bytes.
+#[cfg_attr(feature = "exports", no_mangle)]
+pub unsafe extern "C" fn gx_inputs_sha256(
+    inputs: *const u8,
+    inputs_len: usize,
+    out32: *mut u8,
+) -> i32 {
+    if out32.is_null() {
+        return i32::from(codes::INPUT_ARGUMENT);
+    }
+    // SAFETY: the caller guarantees `inputs` is valid for its length and
+    // `out32` for 32 bytes.
+    unsafe { out_hash(out32, inputs_sha256_ffi(slice(inputs, inputs_len))) }
+}
+
+/// The span at which a layer slot is read (`client-compute.md` section
+/// 10.3), written to `out`: `floor(reader_span_index * reader_span_seconds /
+/// input_span_seconds)`, 0 when `input_span_seconds` is 0.
+///
+/// Returns 0 on success, 1045 for a null `out`, and 1044 when the result
+/// does not fit a `u64`. On failure `out` is not touched.
+///
+/// # Safety
+///
+/// A non-null `out` must be valid for one writable, aligned `u64`.
+#[cfg_attr(feature = "exports", no_mangle)]
+pub unsafe extern "C" fn gx_input_span_index(
+    reader_span_index: u64,
+    reader_span_seconds: u64,
+    input_span_seconds: u64,
+    out: *mut u64,
+) -> i32 {
+    if out.is_null() {
+        return i32::from(codes::IDENTITY_POINTER_NULL);
+    }
+    match address::input_span_index(reader_span_index, reader_span_seconds, input_span_seconds) {
+        Ok(i) => {
+            // SAFETY: `out` is non-null and the caller guarantees it is valid.
+            unsafe { out.write(i) };
+            0
+        }
+        Err(e) => i32::from(e.code),
+    }
+}
+
+/// The C ABI input list decode, on safe inputs.
+fn input_list_ffi(list: Option<&[u8]>) -> Result<Vec<module_io::InputEntry>, ValidationError> {
+    let list = list.ok_or_else(|| {
+        ValidationError::new(
+            codes::INPUT_ARGUMENT,
+            "list: null pointer with non-zero list_len",
+        )
+    })?;
+    module_io::decode_input_list(list)
+}
+
+/// Validates an input list as `gx_inputs` returns it (`client-compute.md`
+/// section 4.1) and, when `count_out_or_null` is non-null, writes its entry
+/// count there.
+///
+/// Returns 0 on success, or 1031 to 1036 for an invalid list and 1039 for a
+/// null `list` with a non-zero `list_len`, writing the reason to `err_buf`
+/// under the rules of [`gx_validate`]. Whether each slot is a layer slot of
+/// the config is the caller's check.
+///
+/// # Safety
+///
+/// A non-null `list` must be valid for `list_len` readable bytes, a non-null
+/// `count_out_or_null` for one writable, aligned `u32`, and `err_buf` as in
+/// [`gx_validate`].
+#[cfg_attr(feature = "exports", no_mangle)]
+pub unsafe extern "C" fn gx_input_list_validate(
+    list: *const u8,
+    list_len: usize,
+    count_out_or_null: *mut u32,
+    err_buf: *mut c_char,
+    err_cap: usize,
+) -> i32 {
+    // SAFETY: the caller guarantees `list` is valid for its length.
+    match input_list_ffi(unsafe { slice(list, list_len) }) {
+        Ok(entries) => {
+            if !count_out_or_null.is_null() {
+                // SAFETY: non-null and the caller guarantees it is valid.
+                unsafe { count_out_or_null.write(entries.len() as u32) };
+            }
+            0
+        }
+        Err(e) => {
+            // SAFETY: the caller guarantees `err_buf` is valid for `err_cap`.
+            unsafe { write_reason(err_buf.cast::<u8>(), err_cap, &e.reason) };
+            i32::from(e.code)
+        }
+    }
+}
+
+/// Reads entry `index` of a valid input list: writes its slot to `slot_out`,
+/// its key's length in bytes to `key_len_out`, and the key (UTF-8, not NUL
+/// terminated) to `key_buf`.
+///
+/// Returns 0 on success; the codes of [`gx_input_list_validate`] for an
+/// invalid list; 1039 for a null `slot_out` or `key_len_out`, an `index` at
+/// or past the entry count, or a `key_cap` smaller than the key, in which
+/// last case only `key_len_out` is written so the caller can size the
+/// buffer. A chunk key is at most 56 bytes.
+///
+/// # Safety
+///
+/// A non-null `list` must be valid for `list_len` readable bytes, `slot_out`
+/// and `key_len_out` for one writable, aligned value each, and a non-null
+/// `key_buf` for `key_cap` writable bytes.
+#[cfg_attr(feature = "exports", no_mangle)]
+pub unsafe extern "C" fn gx_input_list_entry(
+    list: *const u8,
+    list_len: usize,
+    index: u32,
+    slot_out: *mut u32,
+    key_buf: *mut u8,
+    key_cap: usize,
+    key_len_out: *mut usize,
+) -> i32 {
+    let arg = i32::from(codes::INPUT_ARGUMENT);
+    if slot_out.is_null() || key_len_out.is_null() {
+        return arg;
+    }
+    // SAFETY: the caller guarantees `list` is valid for its length.
+    let entries = match input_list_ffi(unsafe { slice(list, list_len) }) {
+        Ok(e) => e,
+        Err(e) => return i32::from(e.code),
+    };
+    let Some(entry) = entries.get(index as usize) else {
+        return arg;
+    };
+    let key = entry.key.to_string();
+    // SAFETY: `key_len_out` is non-null and the caller guarantees it is valid.
+    unsafe { key_len_out.write(key.len()) };
+    if key_cap < key.len() || (key_buf.is_null() && !key.is_empty()) {
+        return arg;
+    }
+    // SAFETY: `key_buf` holds at least `key.len()` writable bytes and
+    // `slot_out` is non-null and valid.
+    unsafe {
+        core::ptr::copy_nonoverlapping(key.as_ptr(), key_buf, key.len());
+        slot_out.write(entry.slot);
+    }
+    0
+}
+
 #[cfg(all(target_arch = "wasm32", feature = "exports"))]
 mod wasm {
     use wasm_bindgen::prelude::*;
@@ -616,6 +995,115 @@ mod wasm {
         )
         .map_err(js)?;
         Ok(crate::address::to_hex(&a))
+    }
+
+    fn hash32(what: &str, b: &[u8]) -> Result<[u8; 32], JsError> {
+        b.try_into().map_err(|_| {
+            js(ValidationError::new(
+                crate::error::codes::IDENTITY_POINTER_NULL,
+                format!("{what}: {} bytes, a SHA-256 is 32", b.len()),
+            ))
+        })
+    }
+
+    /// A layer's identity at a span (`client-compute.md` section 10.5) as
+    /// lowercase hex. `slots` is `count * 33` bytes: per slot a kind byte (0
+    /// layer, 1 frames) and a 32-byte value. Throws an `Error` with message
+    /// `CODE: REASON` on failure (1042, 1043, 1045).
+    #[wasm_bindgen]
+    pub fn layer_identity(
+        module: &[u8],
+        manifest: Option<Vec<u8>>,
+        origin_utc_ms: i64,
+        span_seconds: u64,
+        span_index: u64,
+        slots: &[u8],
+    ) -> Result<String, JsError> {
+        let module = hash32("module", module)?;
+        let manifest = manifest.map(|m| hash32("manifest", &m)).transpose()?;
+        super::identity_ffi(
+            Some(&module),
+            manifest.as_ref(),
+            origin_utc_ms,
+            span_seconds,
+            span_index,
+            Some(slots),
+            None,
+        )
+        .map(|h| crate::sha256::to_hex(&h))
+        .map_err(js)
+    }
+
+    /// A version 2 section address (`client-compute.md` section 3) as
+    /// lowercase hex, with `slots` as in `layer_identity`. Throws an `Error`
+    /// with message `CODE: REASON` on failure (1041 for no slots).
+    #[wasm_bindgen]
+    pub fn section_address_v2(
+        module: &[u8],
+        manifest: Option<Vec<u8>>,
+        origin_utc_ms: i64,
+        span_seconds: u64,
+        span_index: u64,
+        slots: &[u8],
+        key: &str,
+    ) -> Result<String, JsError> {
+        let module = hash32("module", module)?;
+        let manifest = manifest.map(|m| hash32("manifest", &m)).transpose()?;
+        super::identity_ffi(
+            Some(&module),
+            manifest.as_ref(),
+            origin_utc_ms,
+            span_seconds,
+            span_index,
+            Some(slots),
+            Some(Some(key.as_bytes())),
+        )
+        .map(|h| crate::sha256::to_hex(&h))
+        .map_err(js)
+    }
+
+    /// A frames slot's value (`client-compute.md` section 10.5) as lowercase
+    /// hex, from the concatenated 32-byte record hashes. Throws an `Error`
+    /// with message `CODE: REASON` (1043) for a length that is not a
+    /// multiple of 32.
+    #[wasm_bindgen]
+    pub fn frames_slot_value(hashes: &[u8]) -> Result<String, JsError> {
+        super::frames_slot_value_ffi(Some(hashes))
+            .map(|h| crate::sha256::to_hex(&h))
+            .map_err(js)
+    }
+
+    /// The `X-Inputs-Sha256` hash (`client-compute.md` section 10.4) of
+    /// input bytes, as lowercase hex. Throws an `Error` with message
+    /// `CODE: REASON` (1037, 1038) for malformed input bytes.
+    #[wasm_bindgen]
+    pub fn inputs_sha256(inputs: &[u8]) -> Result<String, JsError> {
+        super::inputs_sha256_ffi(Some(inputs))
+            .map(|h| crate::sha256::to_hex(&h))
+            .map_err(js)
+    }
+
+    /// The span at which a layer slot is read (`client-compute.md` section
+    /// 10.3). Throws an `Error` with message `CODE: REASON` (1044) when it
+    /// does not fit a `u64`.
+    #[wasm_bindgen]
+    pub fn input_span_index(
+        reader_span_index: u64,
+        reader_span_seconds: u64,
+        input_span_seconds: u64,
+    ) -> Result<u64, JsError> {
+        crate::address::input_span_index(reader_span_index, reader_span_seconds, input_span_seconds)
+            .map_err(js)
+    }
+
+    /// Validates an input list (`client-compute.md` section 4.1) and returns
+    /// its entry count. Throws an `Error` with message `CODE: REASON` (1031
+    /// to 1036) on failure.
+    #[wasm_bindgen]
+    pub fn input_list_validate(bytes: &[u8]) -> Result<u32, JsError> {
+        crate::module_io::decode_input_list(bytes)
+            .map(|e| e.len() as u32)
+            .map_err(js)
     }
 
     /// Validates a source manifest. Throws an `Error` with message
@@ -757,8 +1245,9 @@ mod wasm {
 
 #[cfg(all(target_arch = "wasm32", feature = "exports"))]
 pub use wasm::{
-    decode_chunk_mass, epochs_manifest, epochs_validate, format_version, integrate_registry,
-    light_retarded_state, manifest_validate, section_address,
+    decode_chunk_mass, epochs_manifest, epochs_validate, format_version, frames_slot_value,
+    input_list_validate, input_span_index, inputs_sha256, integrate_registry, layer_identity,
+    light_retarded_state, manifest_validate, section_address, section_address_v2,
 };
 
 #[cfg(test)]

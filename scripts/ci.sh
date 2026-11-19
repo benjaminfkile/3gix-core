@@ -37,6 +37,8 @@ diff -r target/conformance-check/matter conformance/matter
 diff -r target/conformance-check/registry conformance/registry
 diff -r target/conformance-check/container conformance/container
 diff -r target/conformance-check/address conformance/address
+diff -r target/conformance-check/address-v2 conformance/address-v2
+diff -r target/conformance-check/input-list conformance/input-list
 diff -r target/conformance-check/manifest conformance/manifest
 diff -r target/conformance-check/epochs conformance/epochs
 diff -r target/conformance-check/frame-record conformance/frame-record
@@ -55,6 +57,8 @@ wasm-pack build crates/gx-core --release --target web --out-dir ../../target/was
 step "6b. wasm exports in the generated TypeScript declarations"
 for f in format_version validate decode_chunk_mass section_address manifest_validate \
     epochs_validate epochs_manifest \
+    layer_identity section_address_v2 frames_slot_value inputs_sha256 \
+    input_span_index input_list_validate \
     utc_ms_to_tdb_seconds tdb_seconds_to_utc_ms integrate_registry \
     light_retarded_state; do
     grep -q "export function $f(" target/wasm-pkg/gx_core.d.ts || {

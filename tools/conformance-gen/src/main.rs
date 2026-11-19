@@ -6,7 +6,8 @@
 //! Usage: `conformance-gen OUT_DIR`. Writes `OUT_DIR/matter/valid/`,
 //! `OUT_DIR/matter/invalid/`, `OUT_DIR/registry/` (see the [`registry`]
 //! module), `OUT_DIR/container/` (see the [`container`] module),
-//! `OUT_DIR/address/` ([`address`]), `OUT_DIR/manifest/` ([`manifest`]),
+//! `OUT_DIR/address/` ([`address`]), `OUT_DIR/address-v2/` ([`address_v2`]),
+//! `OUT_DIR/input-list/` ([`input_list`]), `OUT_DIR/manifest/` ([`manifest`]),
 //! `OUT_DIR/epochs/` ([`epochs`]), `OUT_DIR/frame-record/` ([`frame_record`]),
 //! `OUT_DIR/module-io/` ([`module_io`]), `OUT_DIR/module/` ([`module`]),
 //! `OUT_DIR/timescale/`
@@ -47,9 +48,11 @@ use gx_core::units::{Attenuation, Density, Kelvin, Meters, Ratio};
 use serde_json::{json, Value};
 
 mod address;
+mod address_v2;
 mod container;
 mod epochs;
 mod frame_record;
+mod input_list;
 mod integrate;
 mod light;
 mod manifest;
@@ -928,6 +931,8 @@ fn generate() -> Vec<File> {
     files.extend(registry::files());
     files.extend(container::files());
     files.extend(address::files());
+    files.extend(address_v2::files());
+    files.extend(input_list::files());
     files.extend(manifest::files());
     files.extend(epochs::files());
     files.extend(frame_record::files());

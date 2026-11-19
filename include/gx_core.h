@@ -147,6 +147,100 @@ int32_t gx_epochs_manifest(const uint8_t* bytes, size_t len,
 int32_t gx_frame_record_agrees(const uint8_t* registry, size_t registry_len,
                                const uint8_t* record, size_t record_len);
 
+/*
+ * Layer inputs (client-compute.md sections 3, 4.1, 10.3, 10.4, 10.5).
+ *
+ * Slots cross the ABI as `slots_len` bytes, `count * 33`: per slot, in slot
+ * order, a kind byte (0 layer slot, 1 frames slot) and a 32-byte value. A
+ * layer slot's value is the read layer's identity (gx_layer_identity) at
+ * the input span (gx_input_span_index); a frames slot's value is
+ * gx_frames_slot_value. Codes: 1041 no slots for a version 2 address, 1042
+ * unknown kind byte, 1043 a length that is not a multiple of 33 (or 32 for
+ * record hashes), 1044 an input span index that does not fit, 1045 a NULL
+ * hash or output pointer, or a NULL slots or hashes pointer with a non-zero
+ * length. On failure no output is touched.
+ */
+
+/*
+ * Computes a layer's identity at span `span_index` (section 10.5, "3GXI",
+ * identity version 1) and writes its 32 bytes to `out32`. The arguments are
+ * those of gx_section_address without the key, with `manifest32_or_null`
+ * the manifest of that span under the epoch rule, plus the slots. A layer
+ * with no slots has an identity too. Returns 0, 1042, 1043, or 1045.
+ */
+int32_t gx_layer_identity(const uint8_t* module32,
+                          const uint8_t* manifest32_or_null,
+                          int64_t origin_utc_ms, uint64_t span_seconds,
+                          uint64_t span_index, const uint8_t* slots,
+                          size_t slots_len, uint8_t* out32);
+
+/*
+ * Computes a version 2 section address (section 3) of a layer with at least
+ * one input and writes its 32 bytes to `out32`. Returns 0, 1041 for no slots
+ * (use gx_section_address), 1042, 1043, 1045, 207 for a NULL `key` with a
+ * non-zero `key_len`, or 206 for a key that is not UTF-8 or not a chunk key.
+ */
+int32_t gx_section_address_v2(const uint8_t* module32,
+                              const uint8_t* manifest32_or_null,
+                              int64_t origin_utc_ms, uint64_t span_seconds,
+                              uint64_t span_index, const uint8_t* slots,
+                              size_t slots_len, const uint8_t* key,
+                              size_t key_len, uint8_t* out32);
+
+/*
+ * Computes a frames slot's value: SHA-256 over the 32-byte hashes of its
+ * frame records in config order, given as `hashes_len` concatenated bytes.
+ * Returns 0, 1043, or 1045.
+ */
+int32_t gx_frames_slot_value(const uint8_t* hashes, size_t hashes_len,
+                             uint8_t* out32);
+
+/*
+ * Computes X-Inputs-Sha256 (section 10.4): SHA-256 over the SHA-256 of each
+ * input in order, from input bytes as passed to gx_compile (u32 LE count,
+ * then per input a u32 LE length and the bytes). Returns 0, 1037 or 1038 for
+ * malformed input bytes, or 1039 for a NULL `out32` or a NULL `inputs` with
+ * a non-zero `inputs_len`.
+ */
+int32_t gx_inputs_sha256(const uint8_t* inputs, size_t inputs_len,
+                         uint8_t* out32);
+
+/*
+ * The span at which a layer slot is read (section 10.3):
+ * floor(reader_span_index * reader_span_seconds / input_span_seconds),
+ * computed exactly, and 0 when `input_span_seconds` is 0. Writes it to `out`
+ * and returns 0, or returns 1044 when it does not fit a uint64_t and 1045 for
+ * a NULL `out`.
+ */
+int32_t gx_input_span_index(uint64_t reader_span_index,
+                            uint64_t reader_span_seconds,
+                            uint64_t input_span_seconds, uint64_t* out);
+
+/*
+ * Validates an input list as gx_inputs returns it (section 4.1): u32 LE
+ * count, then per entry a u32 LE slot, a u32 LE key length, and the key;
+ * sorted by slot then key bytes, unique, at most 64, keys that parse.
+ * Writes the entry count to `count_out_or_null` when non-NULL. Returns 0, or
+ * 1031 to 1036 for an invalid list and 1039 for a NULL `list` with a non-zero
+ * `list_len`, writing the reason to `err_buf` as gx_validate does.
+ */
+int32_t gx_input_list_validate(const uint8_t* list, size_t list_len,
+                               uint32_t* count_out_or_null, char* err_buf,
+                               size_t err_cap);
+
+/*
+ * Reads entry `index` of a valid input list: its slot to `slot_out`, its key
+ * length to `key_len_out`, and the key (UTF-8, not NUL terminated, at most 56
+ * bytes) to `key_buf`. Returns 0, the codes of gx_input_list_validate for an
+ * invalid list, or 1039 for a NULL `slot_out` or `key_len_out`, an `index`
+ * past the end, or a `key_cap` smaller than the key (then only `key_len_out`
+ * is written).
+ */
+int32_t gx_input_list_entry(const uint8_t* list, size_t list_len,
+                            uint32_t index, uint32_t* slot_out,
+                            uint8_t* key_buf, size_t key_cap,
+                            size_t* key_len_out);
+
 #ifdef __cplusplus
 }
 #endif
