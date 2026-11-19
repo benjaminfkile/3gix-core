@@ -1,0 +1,13 @@
+[package]
+name = "gx-module-overlay"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "A tiny example module of the module ABI v1 for an overlay layer: overlay tiles on the example frame, nothing else."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+gx-core = { path = "../gx-core", default-features = false }
+gx-module-guest = { path = "../gx-module-guest" }

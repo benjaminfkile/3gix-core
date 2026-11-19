@@ -9,6 +9,7 @@
 //! `OUT_DIR/address/` ([`address`]), `OUT_DIR/address-v2/` ([`address_v2`]),
 //! `OUT_DIR/input-list/` ([`input_list`]), `OUT_DIR/manifest/` ([`manifest`]),
 //! `OUT_DIR/epochs/` ([`epochs`]), `OUT_DIR/frame-record/` ([`frame_record`]),
+//! `OUT_DIR/overlay/` and `OUT_DIR/module-overlay/` ([`overlay`]),
 //! `OUT_DIR/module-io/` ([`module_io`]), `OUT_DIR/module/` ([`module`]),
 //! `OUT_DIR/module-v2/` and `OUT_DIR/module-frame/` ([`module_v2`]),
 //! `OUT_DIR/timescale/`
@@ -60,6 +61,7 @@ mod manifest;
 mod module;
 mod module_io;
 mod module_v2;
+mod overlay;
 mod registry;
 mod timescale;
 
@@ -938,6 +940,7 @@ fn generate() -> Vec<File> {
     files.extend(manifest::files());
     files.extend(epochs::files());
     files.extend(frame_record::files());
+    files.extend(overlay::files());
     files.extend(module_io::files());
     files.extend(module::files());
     files.extend(module_v2::files());

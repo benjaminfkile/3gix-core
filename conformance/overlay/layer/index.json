@@ -1,0 +1,64 @@
+{
+  "cases": {
+    "cell-under-surface.bin": {
+      "code": 0,
+      "key": "7-1-0-1-0",
+      "overlay": false
+    },
+    "empty-cell.bin": {
+      "code": 0,
+      "key": "7-1-0-1-0",
+      "overlay": true
+    },
+    "empty-frame-record.bin": {
+      "code": 0,
+      "key": "frame-7",
+      "overlay": true
+    },
+    "empty-registry.bin": {
+      "code": 0,
+      "key": "registry",
+      "overlay": true
+    },
+    "frame-record-under-overlay.bin": {
+      "code": 1058,
+      "key": "frame-7",
+      "overlay": true
+    },
+    "overlay-empty-under-surface.bin": {
+      "code": 1059,
+      "key": "s-7-2-3-5-6",
+      "overlay": false
+    },
+    "overlay-empty.bin": {
+      "code": 0,
+      "key": "s-7-2-3-5-6",
+      "overlay": true
+    },
+    "overlay-tile.bin": {
+      "code": 0,
+      "key": "s-7-2-3-5-6",
+      "overlay": true
+    },
+    "overlay-under-surface.bin": {
+      "code": 1059,
+      "key": "s-7-2-3-5-6",
+      "overlay": false
+    },
+    "registry-under-overlay.bin": {
+      "code": 1058,
+      "key": "registry",
+      "overlay": true
+    },
+    "surface-tile.bin": {
+      "code": 0,
+      "key": "s-7-2-3-5-6",
+      "overlay": false
+    },
+    "surface-under-overlay.bin": {
+      "code": 1058,
+      "key": "s-7-2-3-5-6",
+      "overlay": true
+    }
+  }
+}

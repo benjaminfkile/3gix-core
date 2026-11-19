@@ -29,6 +29,7 @@
 //! | 1020 to 1030 | frame records (`matter-format.md` section 11) |
 //! | 1031 to 1039 | input lists and input bytes (`client-compute.md` section 4.1) |
 //! | 1041 to 1049 | identities, address version 2, and the input span rule (`client-compute.md` sections 3, 10.3, and 10.5) |
+//! | 1051 to 1059 | overlay tiles and the layer-aware check (`matter-format.md` section 12, `client-compute.md` section 2.2) |
 //!
 //! The full table with the check order lives in `docs/errors.md`. A code
 //! never changes meaning once published. New rules get new codes.
@@ -555,6 +556,34 @@ pub mod codes {
         /// The C ABI was given a null pointer for a hash or an output, or a
         /// null slot pointer with a non-zero length.
         IDENTITY_POINTER_NULL = 1045;
+
+        // 1051 to 1059: overlay tiles (`matter-format.md` section 12) and the
+        // layer-aware check (`client-compute.md` section 2.2). Checked by
+        // `overlay` and `validate::validate_for_layer`.
+
+        /// Fewer bytes than the 32-byte overlay tile header.
+        OVERLAY_TOO_SHORT = 1051;
+        /// The magic is not `3GSO`.
+        OVERLAY_BAD_MAGIC = 1052;
+        /// `format_version` is not 1.
+        OVERLAY_BAD_VERSION = 1053;
+        /// A reserved field or an unknown flag bit is set.
+        OVERLAY_RESERVED_NONZERO = 1054;
+        /// `frame_id`, `face`, `level`, `x`, or `y` differs from the key.
+        OVERLAY_KEY_MISMATCH = 1055;
+        /// An EMPTY tile has the ZSTD flag, a non-zero `block_len`, or bytes
+        /// after the header.
+        OVERLAY_EMPTY_INVALID = 1056;
+        /// `block_len` is not the block length, or the bytes after the
+        /// header, or the zstd frame's content, are not the block.
+        OVERLAY_BLOCK_LENGTH = 1057;
+        /// Under an overlay layer: a surface tile under a surface key, a
+        /// matter section that is not empty under a cell key, a registry that
+        /// is not empty, or a frame record that is not empty.
+        OVERLAY_LAYER_REFUSED = 1058;
+        /// An overlay tile under a surface key of a layer that is not an
+        /// overlay layer.
+        OVERLAY_NOT_OVERLAY_LAYER = 1059;
     }
 }
 

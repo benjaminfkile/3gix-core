@@ -1,0 +1,17 @@
+{
+  "key": "s-7-2-3-5-6",
+  "vectors": {
+    "1051-too-short.bin": 1051,
+    "1052-bad-magic.bin": 1052,
+    "1053-version-2.bin": 1053,
+    "1054-flag-bit.bin": 1054,
+    "1054-reserved.bin": 1054,
+    "1055-frame-id.bin": 1055,
+    "1055-level.bin": 1055,
+    "1056-empty-trailing.bin": 1056,
+    "1056-empty-zstd.bin": 1056,
+    "1057-block-len.bin": 1057,
+    "1057-block-short.bin": 1057,
+    "1057-zstd-truncated.bin": 1057
+  }
+}

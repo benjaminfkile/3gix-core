@@ -51,6 +51,20 @@ int32_t gx_validate(const uint8_t* key, size_t key_len,
                     char* err_buf, size_t err_cap);
 
 /*
+ * Validates one submitted section under its chunk key for a layer that is an
+ * overlay layer when `overlay` is non-zero (matter-format.md section 12.5,
+ * client-compute.md section 2.2). Under an overlay layer a surface key takes
+ * only an overlay tile (empty or not), a cell key only the empty matter
+ * section, `registry` only the empty registry, and a frame key only the empty
+ * frame record; anything else valid fails with 1058. Under any other layer an
+ * overlay tile fails with 1059 and everything else is checked as gx_validate
+ * does. Return value, `err_buf`, and NULL pointer rules as gx_validate.
+ */
+int32_t gx_validate_layer(const uint8_t* key, size_t key_len,
+                          const uint8_t* bytes, size_t bytes_len,
+                          int32_t overlay, char* err_buf, size_t err_cap);
+
+/*
  * Returns the short name of error code `code`, such as "BAD_MAGIC" for 102,
  * as a static NUL-terminated ASCII string the caller must not free. Unknown
  * codes, including 0, give the empty string. Never returns NULL.
