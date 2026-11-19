@@ -201,12 +201,21 @@ fn checks_exports_and_abi_version() {
     assert_eq!(e, HostError::Export("gx_last_error is missing".into()));
 
     let e = load(&module(Wat {
+        abi: "(i32.const 3)",
+        ..BASE
+    }))
+    .err()
+    .unwrap();
+    assert_eq!(e, HostError::AbiVersion(3));
+
+    // Version 2 with the version 1 export set: the exports do not match.
+    let e = load(&module(Wat {
         abi: "(i32.const 2)",
         ..BASE
     }))
     .err()
     .unwrap();
-    assert_eq!(e, HostError::AbiVersion(2));
+    assert!(matches!(e, HostError::Export(_)), "{e:?}");
 }
 
 #[test]

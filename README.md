@@ -37,7 +37,7 @@ The architecture and the byte-level format are specified in the hub repository u
 
 Rust stable. Targets: the host triple for native builds and `wasm32-unknown-unknown` for the browser. `wasm-pack` drives WebAssembly builds. `cargo fmt --check`, `cargo clippy -- -D warnings`, and `cargo test` must pass on every change.
 
-`sh scripts/ci.sh` runs the full check locally: toolchain versions, format, clippy, tests, regeneration of the conformance vectors with a byte-for-byte diff against every directory under `conformance/`, the WebAssembly build, a check that the generated TypeScript declarations carry every export, the WebAssembly build run under Node against the native conformance vectors (`scripts/wasm-node-check.mjs`), `wasm-opt`, the headless GPU compute probe, the vocabulary lint, the native shared library builds (`libgx_core` and `libgx_module_host`), the C ABI check program, and the module determinism harness (the example module built for `wasm32-unknown-unknown` and run through `gx-module-host` natively and through Node, `scripts/module-determinism.sh`). See `docs/toolchain.md` for the last recorded run.
+`sh scripts/ci.sh` runs the full check locally: toolchain versions, format, clippy, tests, regeneration of the conformance vectors with a byte-for-byte diff against every directory under `conformance/`, the WebAssembly build, a check that the generated TypeScript declarations carry every export, the WebAssembly build run under Node against the native conformance vectors (`scripts/wasm-node-check.mjs`), `wasm-opt`, the headless GPU compute probe, the vocabulary lint, the native shared library builds (`libgx_core` and `libgx_module_host`), the C ABI check program, and the module determinism harness (the example modules built for `wasm32-unknown-unknown` and run through `gx-module-host` natively and through Node, `scripts/module-determinism.sh`). See `docs/toolchain.md` for the last recorded run.
 
 ### Push hook
 
@@ -102,8 +102,9 @@ crates/gx-core/      the core library: rlib, C ABI cdylib, and WebAssembly expor
                      the orbit tests (laws.rs), and the radiance,
                      emission, and extinction checks (radiance_laws.rs)
 crates/gx-module-guest/  what a compiler author links to become a module:
-                     gx_alloc, gx_free, gx_abi_version, gx_last_error, the
-                     Module trait, and the gx_module! macro (docs/modules.md)
+                     gx_alloc, gx_free, gx_last_error, the Module and
+                     ModuleV2 traits, and the gx_module! and gx_module_v2!
+                     macros (docs/modules.md)
 crates/gx-module-host/   the native worker's module host on wasmtime:
                      admission checks, limits, sources and compile, the
                      module host C ABI cdylib (src/ffi.rs), and the
@@ -111,6 +112,10 @@ crates/gx-module-host/   the native worker's module host on wasmtime:
 crates/gx-module-test/   a tiny example module for tests and conformance:
                      layered gas whose occupancy is the filled share of
                      each sample
+crates/gx-module-frame/  a tiny version 1 example module that declares one
+                     frame, for frames slots in tests
+crates/gx-module-reader/ a tiny version 2 example module reading a frame
+                     record and gx-module-test's layer
 conformance/         conformance vectors any implementation must pass
   keys.json          chunk key vectors
   matter/valid/      valid format 3 sections (.bin) at resolutions 1 to 64,
@@ -138,6 +143,11 @@ conformance/         conformance vectors any implementation must pass
   module-io/         request, tile, and source id vectors, valid and invalid
   module/            example module cases: request bytes, tile bytes, and the
                      expected output SHA-256, index.json lists them
+  module-v2/         version 2 example module cases: request, frame,
+                     input list, tile, and input bytes, and the expected
+                     output SHA-256
+  module-frame/      example frame module cases: registry, its frame key,
+                     and another frame key
   timescale/         UTC to TDB cases with bit patterns, and the inverse
                      inside a leap second
 include/gx_core.h    hand-written C header for the C ABI
@@ -171,6 +181,9 @@ The native build (`cargo build -p gx-core --release`) produces `target/release/l
 
 - `gx_module_compile(module, module_len, module_hash32, request, request_len, tiles, tiles_len, out_ptr, out_len, err_buf, err_len)` loads the module under its expected SHA-256 (refused with `GX_MODULE_ERR_HASH` otherwise) and runs `gx_compile` on the request and tile bytes of `client-compute.md` section 4, under 1 GiB of memory and 60 s.
 - `gx_module_sources(module, module_len, module_hash32, request, request_len, out_ptr, out_len, err_buf, err_len)` runs `gx_sources` and returns the raw `u64 LE` ids.
+- `gx_module_abi_version(module, module_len, module_hash32, err_buf, err_len)` returns the module's ABI version, 1 or 2 (`client-compute.md` section 4.1), or a negative code.
+- `gx_module_inputs(module, module_len, module_hash32, request, request_len, frames, frames_len, out_ptr, out_len, err_buf, err_len)` runs `gx_inputs` with the frame bytes and returns the raw input list, checked with the library's decoder.
+- `gx_module_sources2(..., request, request_len, frames, frames_len, ...)` and `gx_module_compile2(..., request, request_len, tiles, tiles_len, inputs, inputs_len, ...)` run the version 2 `gx_sources` and `gx_compile`. They also run a version 1 module given no frame records or inputs; the version 1 functions refuse a version 2 module with `GX_MODULE_ERR_VERSION`.
 - `gx_module_free(ptr, len)` frees a returned buffer.
 
 Each returns 0 on success or a negative `GX_MODULE_ERR_*` code with the reason in `err_buf`, under the same buffer contract as `gx_core.h`; panics are caught at the boundary. The output is the module's own bytes: validate a section with `gx_validate` before using it. From .NET, P/Invoke the symbols from `gx_module_host` with the same type mapping, `uint8_t**` as `byte**` or `out nint`.

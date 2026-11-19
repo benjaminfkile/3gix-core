@@ -3,7 +3,7 @@ name = "gx-module-guest"
 version = "0.1.0"
 edition = "2021"
 publish = false
-description = "What a compiler author links to become a module: the module ABI v1 guest side."
+description = "What a compiler author links to become a module: the module ABI v1 and v2 guest side."
 
 [dependencies]
 gx-core = { path = "../gx-core", default-features = false }

@@ -2,17 +2,29 @@
 //! modules.
 //!
 //! Implements the host side of `client-compute.md` section 4 (module ABI
-//! version 1). A module is admitted by [`ModuleHost::load`], which checks
-//! the SHA-256 the module is addressed by, runs the static checks in
+//! version 1) and section 4.1 (module ABI version 2, for modules that read
+//! inputs, section 10). A module is admitted by [`ModuleHost::load`], which
+//! checks the SHA-256 the module is addressed by, runs the static checks in
 //! [`check`] (no imports, no relaxed SIMD or threads instruction, only the
 //! allowed features), compiles it with Cranelift, instantiates it with an
-//! empty linker, and checks every required export and
-//! `gx_abi_version() == 1`. [`LoadedModule::sources`] and
-//! [`LoadedModule::compile`] then run the module, each call in a fresh
-//! instance, under a memory limit (1 GiB by default) and an epoch
-//! interruption time limit (60 s by default). A compiled section is checked
-//! with the library validator before it is returned, as the worker must
-//! before upload (`client-compute.md` section 1 step 4).
+//! empty linker, reads `gx_abi_version()` (1 or 2), and checks that the
+//! exports are exactly the set of that version: [`REQUIRED_FUNCTIONS`] for
+//! version 1, [`REQUIRED_FUNCTIONS_V2`] (with `gx_inputs` and the wider
+//! `gx_sources` and `gx_compile`) for version 2.
+//!
+//! A version 1 module runs with [`LoadedModule::sources`] and
+//! [`LoadedModule::compile`] exactly as before. A version 2 module runs with
+//! [`LoadedModule::inputs`], [`LoadedModule::sources_v2`], and
+//! [`LoadedModule::compile_v2`], which pass the frame records and the input
+//! sections; the input list a module returns is checked with
+//! [`module_io::decode_input_list`]. The version 2 calls also run a version
+//! 1 module, which reads no inputs: its input list is empty, and it must be
+//! given no frame records and no inputs. Each call runs in a fresh
+//! instance, under a memory limit (1 GiB by default) that covers the tiles
+//! and the inputs together, and an epoch interruption time limit (60 s by
+//! default). A compiled section is checked with the library validator
+//! before it is returned, as the worker must before upload
+//! (`client-compute.md` section 1 step 4).
 //!
 //! The engine is configured for determinism (`space-model.md` section 1
 //! rule 7, section 4 item 6): every WebAssembly proposal outside the allowed
@@ -20,7 +32,9 @@
 //! canonicalizes NaNs so no NaN bit pattern depends on the machine.
 //!
 //! The same host is exported through a C ABI in [`ffi`] (`gx_module_compile`,
-//! `gx_module_sources`, `gx_module_free`) so the hub can settle a dispute by
+//! `gx_module_sources`, `gx_module_free`, and for version 2
+//! `gx_module_abi_version`, `gx_module_inputs`, `gx_module_sources2`,
+//! `gx_module_compile2`) so the hub can settle a dispute by
 //! running the module with the host clients use (`client-compute.md`
 //! section 2.7).
 //!
@@ -36,7 +50,8 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use gx_core::error::ValidationError;
-use gx_core::module_io::{self, ModuleRequest, Tile, ABI_VERSION};
+use gx_core::key::ChunkKey;
+use gx_core::module_io::{self, ModuleRequest, Tile, ABI_VERSION, ABI_VERSION_2};
 use gx_core::sha256::{sha256, to_hex};
 use wasmtime::{
     Config, Engine, ExternType, Instance, InstancePre, Linker, Memory, Module, ResourceLimiter,
@@ -56,14 +71,27 @@ pub const DEFAULT_TIME_LIMIT: Duration = Duration::from_secs(60);
 /// within one tick.
 pub const EPOCH_TICK: Duration = Duration::from_millis(10);
 
-/// The exports every module must have, with their signatures written as
-/// parameter and result types (`i` for `i32`, `I` for `i64`).
+/// The exports a version 1 module must have, with their signatures written
+/// as parameter and result types (`i` for `i32`, `I` for `i64`). A version 1
+/// module must not export `gx_inputs`.
 pub const REQUIRED_FUNCTIONS: [(&str, &str, &str); 6] = [
     ("gx_abi_version", "", "i"),
     ("gx_alloc", "i", "i"),
     ("gx_free", "ii", ""),
     ("gx_sources", "ii", "I"),
     ("gx_compile", "iiii", "I"),
+    ("gx_last_error", "", "I"),
+];
+
+/// The exports a version 2 module must have (`client-compute.md` section
+/// 4.1), written as in [`REQUIRED_FUNCTIONS`].
+pub const REQUIRED_FUNCTIONS_V2: [(&str, &str, &str); 7] = [
+    ("gx_abi_version", "", "i"),
+    ("gx_alloc", "i", "i"),
+    ("gx_free", "ii", ""),
+    ("gx_inputs", "iiii", "I"),
+    ("gx_sources", "iiii", "I"),
+    ("gx_compile", "iiiiii", "I"),
     ("gx_last_error", "", "I"),
 ];
 
@@ -91,10 +119,15 @@ pub enum HostError {
     /// The module contains an instruction from a forbidden proposal, such as
     /// relaxed SIMD or threads.
     ForbiddenOpcode(ForbiddenOpcode),
-    /// A required export is missing or has the wrong type.
+    /// A required export is missing or has the wrong type, or the exports do
+    /// not match the version `gx_abi_version` declares.
     Export(String),
-    /// `gx_abi_version` returned something other than 1.
+    /// `gx_abi_version` returned something other than 1 or 2.
     AbiVersion(i32),
+    /// The call does not fit the module's ABI version: a version 1 call on a
+    /// version 2 module, or frame records or inputs given to a version 1
+    /// module.
+    Version(String),
     /// The engine could not be built or the module could not be compiled or
     /// instantiated.
     Engine(String),
@@ -134,9 +167,11 @@ impl fmt::Display for HostError {
                 o.proposal, o.instruction, o.offset
             ),
             HostError::Export(r) => write!(f, "module export: {r}"),
-            HostError::AbiVersion(v) => {
-                write!(f, "gx_abi_version returned {v}, expected {ABI_VERSION}")
-            }
+            HostError::AbiVersion(v) => write!(
+                f,
+                "gx_abi_version returned {v}, expected {ABI_VERSION} or {ABI_VERSION_2}"
+            ),
+            HostError::Version(r) => write!(f, "ABI version: {r}"),
             HostError::Engine(r) => write!(f, "engine: {r}"),
             HostError::TimeLimit(d) => {
                 write!(f, "module exceeded the time limit of {} ms", d.as_millis())
@@ -258,7 +293,8 @@ impl ModuleHost {
 
     /// Admits a module: checks its SHA-256 equals `expected_hash`, runs
     /// [`check_module`], compiles it, instantiates it with an empty linker,
-    /// and checks the required exports and `gx_abi_version() == 1`.
+    /// reads `gx_abi_version()` (1 or 2), and checks the exports are those
+    /// of that version.
     pub fn load(&self, bytes: &[u8], expected_hash: &[u8; 32]) -> Result<LoadedModule> {
         let actual = sha256(bytes);
         if actual != *expected_hash {
@@ -270,22 +306,34 @@ impl ModuleHost {
         check_module(bytes)?;
         let module =
             Module::new(&self.engine, bytes).map_err(|e| HostError::Engine(format!("{e:#}")))?;
-        check_exports(&module)?;
+        check_memory(&module)?;
+        check_functions(&module, &REQUIRED_FUNCTIONS[..1])?;
         let linker: Linker<Limits> = Linker::new(&self.engine);
         let pre = linker
             .instantiate_pre(&module)
             .map_err(|e| HostError::Engine(format!("{e:#}")))?;
-        let loaded = LoadedModule {
+        let mut loaded = LoadedModule {
             hash: actual,
+            abi_version: 0,
             pre,
             config: self.config,
             _ticker: Arc::clone(&self.ticker),
         };
         let mut call = loaded.instantiate()?;
         let version = call.abi_version()?;
-        if version != ABI_VERSION {
-            return Err(HostError::AbiVersion(version));
+        match version {
+            ABI_VERSION => {
+                check_functions(&module, &REQUIRED_FUNCTIONS)?;
+                if module.get_export("gx_inputs").is_some() {
+                    return Err(HostError::Export(
+                        "gx_inputs is exported but gx_abi_version returned 1".into(),
+                    ));
+                }
+            }
+            ABI_VERSION_2 => check_functions(&module, &REQUIRED_FUNCTIONS_V2)?,
+            v => return Err(HostError::AbiVersion(v)),
         }
+        loaded.abi_version = version;
         Ok(loaded)
     }
 }
@@ -301,7 +349,7 @@ fn type_code(v: &ValType) -> char {
     }
 }
 
-fn check_exports(module: &Module) -> Result<()> {
+fn check_memory(module: &Module) -> Result<()> {
     match module.get_export("memory") {
         Some(ExternType::Memory(m)) if !m.is_64() && !m.is_shared() => {}
         Some(_) => {
@@ -311,7 +359,11 @@ fn check_exports(module: &Module) -> Result<()> {
         }
         None => return Err(HostError::Export("memory is missing".into())),
     }
-    for (name, params, results) in REQUIRED_FUNCTIONS {
+    Ok(())
+}
+
+fn check_functions(module: &Module, required: &[(&str, &str, &str)]) -> Result<()> {
+    for &(name, params, results) in required {
         let Some(ext) = module.get_export(name) else {
             return Err(HostError::Export(format!("{name} is missing")));
         };
@@ -370,6 +422,7 @@ impl ResourceLimiter for Limits {
 /// A module admitted by [`ModuleHost::load`], ready to run.
 pub struct LoadedModule {
     hash: [u8; 32],
+    abi_version: i32,
     pre: InstancePre<Limits>,
     config: HostConfig,
     _ticker: Arc<Ticker>,
@@ -387,6 +440,23 @@ impl LoadedModule {
     /// The SHA-256 of the module's bytes.
     pub fn hash(&self) -> [u8; 32] {
         self.hash
+    }
+
+    /// The module's ABI version, what `gx_abi_version` returned: 1, or 2 for
+    /// a module that reads inputs (`client-compute.md` section 4.1).
+    pub fn abi_version(&self) -> i32 {
+        self.abi_version
+    }
+
+    /// Fails unless the module is version 1, for the version 1 calls.
+    fn require_v1(&self, call: &str) -> Result<()> {
+        if self.abi_version == ABI_VERSION {
+            return Ok(());
+        }
+        Err(HostError::Version(format!(
+            "{call} is a version 1 call and the module is version {}",
+            self.abi_version
+        )))
     }
 
     fn instantiate(&self) -> Result<Call> {
@@ -428,6 +498,7 @@ impl LoadedModule {
     /// Runs `gx_sources`: the source tile ids the request needs, ascending
     /// and unique.
     pub fn sources(&self, request: &ModuleRequest) -> Result<Vec<u64>> {
+        self.require_v1("gx_sources")?;
         let mut call = self.instantiate()?;
         let req = module_io::encode_request(request);
         let (rp, rl) = call.write(&req)?;
@@ -460,6 +531,8 @@ impl LoadedModule {
     /// validating the result. For conformance harnesses that replay stored
     /// vectors; the worker uses [`LoadedModule::compile`].
     pub fn compile_raw(&self, request: &[u8], tiles: &[u8]) -> Result<Vec<u8>> {
+        self.require_v1("gx_compile")?;
+        self.check_size(tiles.len())?;
         let mut call = self.instantiate()?;
         let (rp, rl) = call.write(request)?;
         let (tp, tl) = call.write(tiles)?;
@@ -473,6 +546,7 @@ impl LoadedModule {
     /// Runs `gx_sources` on request bytes exactly as given and returns the
     /// raw id list bytes. For conformance harnesses.
     pub fn sources_raw(&self, request: &[u8]) -> Result<Vec<u8>> {
+        self.require_v1("gx_sources")?;
         let mut call = self.instantiate()?;
         let (rp, rl) = call.write(request)?;
         let packed = call.call_i64("gx_sources", &[rp, rl])?;
@@ -481,6 +555,147 @@ impl LoadedModule {
         }
         call.take(packed)
     }
+
+    /// Fails with [`HostError::MemoryLimit`] when the bytes to pass cannot
+    /// fit the memory limit, before the module runs.
+    fn check_size(&self, len: usize) -> Result<()> {
+        if len > self.config.memory_limit {
+            return Err(HostError::MemoryLimit(self.config.memory_limit));
+        }
+        Ok(())
+    }
+
+    /// Runs `gx_inputs` (`client-compute.md` section 4.1): the input
+    /// sections this request needs from the layer's layer slots, as
+    /// `(slot, key)` pairs sorted by slot, then key bytes. `frames` are the
+    /// records of the layer's frames slots, in slot order and, within a
+    /// slot, in the order the config lists the frames. A version 1 module
+    /// reads no inputs: its list is empty.
+    pub fn inputs(
+        &self,
+        request: &ModuleRequest,
+        frames: &[&[u8]],
+    ) -> Result<Vec<(u32, ChunkKey)>> {
+        let frames = module_io::encode_inputs(frames).map_err(HostError::Input)?;
+        let list = self.inputs_raw(&module_io::encode_request(request), &frames)?;
+        let entries =
+            module_io::decode_input_list(&list).map_err(|e| HostError::Abi(e.to_string()))?;
+        Ok(entries.into_iter().map(|e| (e.slot, e.key)).collect())
+    }
+
+    /// Runs `gx_inputs` on request and frame bytes exactly as given and
+    /// returns the raw input list bytes, checked with
+    /// [`module_io::decode_input_list`]. A version 1 module returns the
+    /// empty list (a zero count) and must be given no frame records.
+    pub fn inputs_raw(&self, request: &[u8], frames: &[u8]) -> Result<Vec<u8>> {
+        if self.abi_version == ABI_VERSION {
+            no_records(frames, "frame records")?;
+            return Ok(0u32.to_le_bytes().to_vec());
+        }
+        self.check_size(frames.len())?;
+        let mut call = self.instantiate()?;
+        let (rp, rl) = call.write(request)?;
+        let (fp, fl) = call.write(frames)?;
+        let packed = call.call_i64("gx_inputs", &[rp, rl, fp, fl])?;
+        if packed == -1 {
+            return Err(HostError::ModuleFailed(call.last_error()?));
+        }
+        let list = call.take(packed)?;
+        module_io::decode_input_list(&list).map_err(|e| HostError::Abi(e.to_string()))?;
+        Ok(list)
+    }
+
+    /// Runs `gx_sources` with the frame records (`client-compute.md`
+    /// section 4.1): the source tile ids the request needs, ascending and
+    /// unique. A version 1 module runs its version 1 `gx_sources` and must
+    /// be given no frame records.
+    pub fn sources_v2(&self, request: &ModuleRequest, frames: &[&[u8]]) -> Result<Vec<u64>> {
+        let frames = module_io::encode_inputs(frames).map_err(HostError::Input)?;
+        let ids = self.sources_v2_raw(&module_io::encode_request(request), &frames)?;
+        module_io::decode_source_ids(&ids).map_err(|e| HostError::Abi(e.to_string()))
+    }
+
+    /// Runs `gx_sources` on request and frame bytes exactly as given and
+    /// returns the raw id list bytes. For conformance harnesses and the C
+    /// ABI.
+    pub fn sources_v2_raw(&self, request: &[u8], frames: &[u8]) -> Result<Vec<u8>> {
+        if self.abi_version == ABI_VERSION {
+            no_records(frames, "frame records")?;
+            let mut call = self.instantiate()?;
+            let (rp, rl) = call.write(request)?;
+            return call.run("gx_sources", &[rp, rl]);
+        }
+        self.check_size(frames.len())?;
+        let mut call = self.instantiate()?;
+        let (rp, rl) = call.write(request)?;
+        let (fp, fl) = call.write(frames)?;
+        call.run("gx_sources", &[rp, rl, fp, fl])
+    }
+
+    /// Runs `gx_compile` with the tiles and the inputs (`client-compute.md`
+    /// section 4.1) and checks the section with the library validator under
+    /// the request's chunk key. `inputs` are in slot order: a frames slot
+    /// gives its records in the order the config lists the frames, a layer
+    /// slot gives the sections of the entries [`LoadedModule::inputs`]
+    /// returned for it, in that order. A version 1 module runs its version
+    /// 1 `gx_compile` and must be given no inputs.
+    pub fn compile_v2(
+        &self,
+        request: &ModuleRequest,
+        tiles: &[(u64, Vec<u8>)],
+        inputs: &[&[u8]],
+    ) -> Result<Vec<u8>> {
+        let list: Vec<Tile<'_>> = tiles
+            .iter()
+            .map(|(id, bytes)| Tile { id: *id, bytes })
+            .collect();
+        let tile_bytes = module_io::encode_tiles(&list).map_err(HostError::Input)?;
+        let input_bytes = module_io::encode_inputs(inputs).map_err(HostError::Input)?;
+        let section = self.compile_v2_raw(
+            &module_io::encode_request(request),
+            &tile_bytes,
+            &input_bytes,
+        )?;
+        gx_core::validate(&request.key.to_string(), &section).map_err(HostError::Section)?;
+        Ok(section)
+    }
+
+    /// Runs `gx_compile` on request, tile, and input bytes exactly as given,
+    /// without validating the result. For conformance harnesses and the C
+    /// ABI. The tiles and the inputs together count against the memory
+    /// limit.
+    pub fn compile_v2_raw(&self, request: &[u8], tiles: &[u8], inputs: &[u8]) -> Result<Vec<u8>> {
+        if self.abi_version == ABI_VERSION {
+            no_records(inputs, "inputs")?;
+            self.check_size(tiles.len())?;
+            let mut call = self.instantiate()?;
+            let (rp, rl) = call.write(request)?;
+            let (tp, tl) = call.write(tiles)?;
+            return call.run("gx_compile", &[rp, rl, tp, tl]);
+        }
+        self.check_size(tiles.len().saturating_add(inputs.len()))?;
+        let mut call = self.instantiate()?;
+        let (rp, rl) = call.write(request)?;
+        let (tp, tl) = call.write(tiles)?;
+        let (ip, il) = call.write(inputs)?;
+        call.run("gx_compile", &[rp, rl, tp, tl, ip, il])
+    }
+}
+
+/// Fails unless `bytes` are empty or decode as a list of zero records or
+/// inputs: what a version 1 module, which reads none, may be given.
+fn no_records(bytes: &[u8], what: &str) -> Result<()> {
+    if bytes.is_empty() {
+        return Ok(());
+    }
+    let list = module_io::decode_inputs(bytes).map_err(HostError::Input)?;
+    if list.is_empty() {
+        return Ok(());
+    }
+    Err(HostError::Version(format!(
+        "{} {what} given to a version 1 module, which reads none",
+        list.len()
+    )))
 }
 
 /// Turns a wasmtime error into a [`HostError`], giving the limits
@@ -540,9 +755,25 @@ impl Call {
                     .map_err(|e| HostError::Export(format!("{e:#}")))?;
                 f.call(&mut self.store, (*a, *b, *c, *d))
             }
-            _ => unreachable!("only the two and four argument exports are called"),
+            [a, b, c, d, e, g] => {
+                let f = self
+                    .instance
+                    .get_typed_func::<(i32, i32, i32, i32, i32, i32), i64>(&mut self.store, name)
+                    .map_err(|e| HostError::Export(format!("{e:#}")))?;
+                f.call(&mut self.store, (*a, *b, *c, *d, *e, *g))
+            }
+            _ => unreachable!("only the two, four, and six argument exports are called"),
         };
         self.finish(r)
+    }
+
+    /// Calls an export that returns a block or -1, and takes the block.
+    fn run(&mut self, name: &str, args: &[i32]) -> Result<Vec<u8>> {
+        let packed = self.call_i64(name, args)?;
+        if packed == -1 {
+            return Err(HostError::ModuleFailed(self.last_error()?));
+        }
+        self.take(packed)
     }
 
     /// Copies `bytes` into a block from `gx_alloc` and returns its pointer

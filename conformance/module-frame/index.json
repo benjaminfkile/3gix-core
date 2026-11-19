@@ -1,0 +1,16 @@
+{
+  "cases": {
+    "01-registry": {
+      "key": "registry",
+      "sha256": "6bcd3e81e90f3c8d1cf87ac6e2597afd62cd5b125a3b1a3109d27ec127b75d3b"
+    },
+    "02-declared-frame": {
+      "key": "frame-7",
+      "sha256": "f6726e57244a86fd7136243735dee497e809df3853be79929c68ede09e4879e1"
+    },
+    "03-other-frame": {
+      "key": "frame-8",
+      "sha256": "7b042fa657a3fd5d0d3bd188519c4190aec8aa1fa68677b0c4f6b76b22573e5f"
+    }
+  }
+}

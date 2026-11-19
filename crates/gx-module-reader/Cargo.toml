@@ -1,0 +1,18 @@
+[package]
+name = "gx-module-reader"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "A tiny example module of the module ABI v2: reads a frame record and another layer's sections."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+gx-core = { path = "../gx-core", default-features = false }
+gx-module-guest = { path = "../gx-module-guest" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+gx-module-frame = { path = "../gx-module-frame" }
+gx-module-host = { path = "../gx-module-host" }
+gx-module-test = { path = "../gx-module-test" }

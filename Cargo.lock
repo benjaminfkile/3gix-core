@@ -187,7 +187,9 @@ name = "conformance-gen"
 version = "0.1.0"
 dependencies = [
  "gx-core",
+ "gx-module-frame",
  "gx-module-guest",
+ "gx-module-reader",
  "gx-module-test",
  "serde_json",
  "zstd",
@@ -635,6 +637,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gx-module-frame"
+version = "0.1.0"
+dependencies = [
+ "gx-core",
+ "gx-module-guest",
+]
+
+[[package]]
 name = "gx-module-guest"
 version = "0.1.0"
 dependencies = [
@@ -649,6 +659,17 @@ dependencies = [
  "wasmparser 0.261.0",
  "wasmtime",
  "wat",
+]
+
+[[package]]
+name = "gx-module-reader"
+version = "0.1.0"
+dependencies = [
+ "gx-core",
+ "gx-module-frame",
+ "gx-module-guest",
+ "gx-module-host",
+ "gx-module-test",
 ]
 
 [[package]]

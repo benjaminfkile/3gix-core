@@ -1,10 +1,16 @@
 //! C ABI of the module host, declared in `include/gx_module_host.h`.
 //!
 //! Lets the hub run a module natively with the host clients use, to settle
-//! a dispute (`client-compute.md` section 2.7). Each call admits the module
-//! under its expected hash ([`ModuleHost::load`], with the most recently
-//! compiled module reused when the hash matches) and runs `gx_compile` or
-//! `gx_sources` on request and tile bytes laid out as in section 4, with the
+//! a dispute (`client-compute.md` section 2.7), to compute frame records
+//! (section 10.2), and to read a module's input list (section 10.4). Each
+//! call admits the module under its expected hash ([`ModuleHost::load`],
+//! with the most recently compiled module reused when the hash matches) and
+//! runs `gx_compile` or `gx_sources` on request and tile bytes laid out as
+//! in section 4 ([`gx_module_compile`], [`gx_module_sources`]), or for
+//! module ABI version 2 (section 4.1) reports the version
+//! ([`gx_module_abi_version`]) and runs `gx_inputs`, `gx_sources`, and
+//! `gx_compile` with frame and input bytes ([`gx_module_inputs`],
+//! [`gx_module_sources2`], [`gx_module_compile2`]), with the
 //! default limits ([`crate::DEFAULT_MEMORY_LIMIT`],
 //! [`crate::DEFAULT_TIME_LIMIT`]). The
 //! output is the module's own bytes, not validated here: the caller checks
@@ -28,7 +34,8 @@ pub const GX_MODULE_ERR_ARGUMENT: i32 = -1;
 pub const GX_MODULE_ERR_HASH: i32 = -2;
 /// The module is not admissible: it does not parse, imports something, uses
 /// a forbidden feature or instruction, lacks a required export, or reports
-/// an ABI version other than 1.
+/// an ABI version other than 1 or 2, or exports that do not match the version
+/// it reports.
 pub const GX_MODULE_ERR_REJECTED: i32 = -3;
 /// The engine could not be built, or the module could not be compiled or
 /// instantiated.
@@ -46,6 +53,10 @@ pub const GX_MODULE_ERR_MODULE_FAILED: i32 = -8;
 pub const GX_MODULE_ERR_ABI: i32 = -9;
 /// The host panicked. A bug in the host, never in the module.
 pub const GX_MODULE_ERR_PANIC: i32 = -10;
+/// The call does not fit the module's ABI version: a version 1 call
+/// ([`gx_module_compile`], [`gx_module_sources`]) on a version 2 module, or
+/// frame records or inputs given to a version 1 module.
+pub const GX_MODULE_ERR_VERSION: i32 = -11;
 
 /// The C ABI error code of a host error.
 pub fn error_code(e: &HostError) -> i32 {
@@ -61,6 +72,7 @@ pub fn error_code(e: &HostError) -> i32 {
         HostError::MemoryLimit(_) => GX_MODULE_ERR_MEMORY_LIMIT,
         HostError::Trap(_) => GX_MODULE_ERR_TRAP,
         HostError::ModuleFailed(_) => GX_MODULE_ERR_MODULE_FAILED,
+        HostError::Version(_) => GX_MODULE_ERR_VERSION,
         // The raw calls neither encode tiles nor validate the section, so
         // these two are not returned by the C ABI; they map for totality.
         HostError::Input(_) => GX_MODULE_ERR_ARGUMENT,
@@ -309,8 +321,179 @@ pub unsafe extern "C" fn gx_module_sources(
     }
 }
 
-/// Frees a buffer returned by [`gx_module_compile`] or
-/// [`gx_module_sources`]. A null `ptr` is ignored.
+/// Loads `module` under `module_hash32` and returns its ABI version, what
+/// its `gx_abi_version` returned: 1, or 2 for a module that reads inputs
+/// (`client-compute.md` section 4.1). On failure returns a negative
+/// `GX_MODULE_ERR_*` code and writes the reason into `err_buf` as for
+/// [`gx_module_compile`].
+///
+/// # Safety
+///
+/// Each non-null pointer must be valid for its length (`module_hash32` for
+/// 32 readable bytes), and a non-null `err_buf` for `err_len` writable
+/// bytes.
+#[no_mangle]
+pub unsafe extern "C" fn gx_module_abi_version(
+    module: *const u8,
+    module_len: usize,
+    module_hash32: *const u8,
+    err_buf: *mut c_char,
+    err_len: usize,
+) -> i32 {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        // SAFETY: the caller guarantees every pointer as documented.
+        let module = unsafe { slice(module, module_len, "module") }?;
+        // SAFETY: as above.
+        let hash = unsafe { hash32(module_hash32) }?;
+        Ok(load(module, &hash)?.abi_version())
+    }))
+    .unwrap_or_else(|_| {
+        Err(Failure {
+            code: GX_MODULE_ERR_PANIC,
+            reason: "the module host panicked".to_string(),
+        })
+    });
+    match result {
+        Ok(v) => v,
+        Err(f) => {
+            // SAFETY: the caller guarantees `err_buf` is valid for `err_len`
+            // bytes when it is non-null.
+            unsafe { write_reason(err_buf, err_len, &f.reason) };
+            f.code
+        }
+    }
+}
+
+/// Loads `module` under `module_hash32` and runs `gx_inputs` with the
+/// request and frame bytes exactly as given (`client-compute.md` section
+/// 4.1), under the default limits.
+///
+/// Returns 0 and the raw input list in `*out_ptr` and `*out_len`, checked
+/// with the library's input list decoder (sorted by slot, then key bytes,
+/// unique, at most 64 entries, every key a chunk key). The caller frees it
+/// with [`gx_module_free`]. A version 1 module reads no inputs: its list is
+/// the four bytes of a zero count, and it must be given no frame records
+/// (a zero count or no bytes at all). Failures as for
+/// [`gx_module_compile`].
+///
+/// # Safety
+///
+/// As for [`gx_module_compile`].
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gx_module_inputs(
+    module: *const u8,
+    module_len: usize,
+    module_hash32: *const u8,
+    request: *const u8,
+    request_len: usize,
+    frames: *const u8,
+    frames_len: usize,
+    out_ptr: *mut *mut u8,
+    out_len: *mut usize,
+    err_buf: *mut c_char,
+    err_len: usize,
+) -> i32 {
+    // SAFETY: the caller guarantees every pointer as documented.
+    unsafe {
+        boundary(out_ptr, out_len, err_buf, err_len, || {
+            let module = slice(module, module_len, "module")?;
+            let hash = hash32(module_hash32)?;
+            let request = slice(request, request_len, "request")?;
+            let frames = slice(frames, frames_len, "frames")?;
+            let loaded = load(module, &hash)?;
+            Ok(loaded.inputs_raw(request, frames)?)
+        })
+    }
+}
+
+/// Loads `module` under `module_hash32` and runs the version 2 `gx_sources`
+/// with the request and frame bytes exactly as given (`client-compute.md`
+/// section 4.1), under the default limits. A version 1 module runs its
+/// version 1 `gx_sources` and must be given no frame records.
+///
+/// Output as for [`gx_module_sources`]; failures as for
+/// [`gx_module_compile`].
+///
+/// # Safety
+///
+/// As for [`gx_module_compile`].
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gx_module_sources2(
+    module: *const u8,
+    module_len: usize,
+    module_hash32: *const u8,
+    request: *const u8,
+    request_len: usize,
+    frames: *const u8,
+    frames_len: usize,
+    out_ptr: *mut *mut u8,
+    out_len: *mut usize,
+    err_buf: *mut c_char,
+    err_len: usize,
+) -> i32 {
+    // SAFETY: the caller guarantees every pointer as documented.
+    unsafe {
+        boundary(out_ptr, out_len, err_buf, err_len, || {
+            let module = slice(module, module_len, "module")?;
+            let hash = hash32(module_hash32)?;
+            let request = slice(request, request_len, "request")?;
+            let frames = slice(frames, frames_len, "frames")?;
+            let loaded = load(module, &hash)?;
+            let ids = loaded.sources_v2_raw(request, frames)?;
+            gx_core::module_io::decode_source_ids(&ids)
+                .map_err(|e| HostError::Abi(e.to_string()))?;
+            Ok(ids)
+        })
+    }
+}
+
+/// Loads `module` under `module_hash32` and runs the version 2 `gx_compile`
+/// with the request, tile, and input bytes exactly as given
+/// (`client-compute.md` section 4.1), under the default limits; the tiles
+/// and inputs together count against the memory limit. A version 1 module
+/// runs its version 1 `gx_compile` and must be given no inputs.
+///
+/// Output and failures as for [`gx_module_compile`].
+///
+/// # Safety
+///
+/// As for [`gx_module_compile`].
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn gx_module_compile2(
+    module: *const u8,
+    module_len: usize,
+    module_hash32: *const u8,
+    request: *const u8,
+    request_len: usize,
+    tiles: *const u8,
+    tiles_len: usize,
+    inputs: *const u8,
+    inputs_len: usize,
+    out_ptr: *mut *mut u8,
+    out_len: *mut usize,
+    err_buf: *mut c_char,
+    err_len: usize,
+) -> i32 {
+    // SAFETY: the caller guarantees every pointer as documented.
+    unsafe {
+        boundary(out_ptr, out_len, err_buf, err_len, || {
+            let module = slice(module, module_len, "module")?;
+            let hash = hash32(module_hash32)?;
+            let request = slice(request, request_len, "request")?;
+            let tiles = slice(tiles, tiles_len, "tiles")?;
+            let inputs = slice(inputs, inputs_len, "inputs")?;
+            let loaded = load(module, &hash)?;
+            Ok(loaded.compile_v2_raw(request, tiles, inputs)?)
+        })
+    }
+}
+
+/// Frees a buffer returned by [`gx_module_compile`], [`gx_module_sources`],
+/// [`gx_module_inputs`], [`gx_module_sources2`], or [`gx_module_compile2`].
+/// A null `ptr` is ignored.
 ///
 /// # Safety
 ///

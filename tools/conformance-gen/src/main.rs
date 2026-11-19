@@ -10,6 +10,7 @@
 //! `OUT_DIR/input-list/` ([`input_list`]), `OUT_DIR/manifest/` ([`manifest`]),
 //! `OUT_DIR/epochs/` ([`epochs`]), `OUT_DIR/frame-record/` ([`frame_record`]),
 //! `OUT_DIR/module-io/` ([`module_io`]), `OUT_DIR/module/` ([`module`]),
+//! `OUT_DIR/module-v2/` and `OUT_DIR/module-frame/` ([`module_v2`]),
 //! `OUT_DIR/timescale/`
 //! ([`timescale`]), `OUT_DIR/integrate/` ([`integrate`]), and
 //! `OUT_DIR/light/` ([`light`]), the files
@@ -58,6 +59,7 @@ mod light;
 mod manifest;
 mod module;
 mod module_io;
+mod module_v2;
 mod registry;
 mod timescale;
 
@@ -938,6 +940,7 @@ fn generate() -> Vec<File> {
     files.extend(frame_record::files());
     files.extend(module_io::files());
     files.extend(module::files());
+    files.extend(module_v2::files());
     files.extend(timescale::files());
     files.extend(integrate::files());
     files.extend(light::files());
