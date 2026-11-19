@@ -1,0 +1,16 @@
+{
+  "tiles": {
+    "empty.bin": {
+      "key": "s-7-2-3-5-6"
+    },
+    "module-level0.bin": {
+      "key": "s-7-0-0-0-0"
+    },
+    "raw.bin": {
+      "key": "s-7-2-3-5-6"
+    },
+    "zstd.bin": {
+      "key": "s-7-2-3-5-6"
+    }
+  }
+}

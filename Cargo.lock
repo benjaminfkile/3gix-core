@@ -189,6 +189,7 @@ dependencies = [
  "gx-core",
  "gx-module-frame",
  "gx-module-guest",
+ "gx-module-overlay",
  "gx-module-reader",
  "gx-module-test",
  "serde_json",
@@ -659,6 +660,14 @@ dependencies = [
  "wasmparser 0.261.0",
  "wasmtime",
  "wat",
+]
+
+[[package]]
+name = "gx-module-overlay"
+version = "0.1.0"
+dependencies = [
+ "gx-core",
+ "gx-module-guest",
 ]
 
 [[package]]

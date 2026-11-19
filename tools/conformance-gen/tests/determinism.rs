@@ -49,6 +49,8 @@ fn generator_reproduces_checked_in_vectors() {
         "module-io",
         "module-v2",
         "module-frame",
+        "overlay",
+        "module-overlay",
         "timescale",
     ] {
         let fresh = scratch.join(dir);

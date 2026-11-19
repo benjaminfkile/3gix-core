@@ -352,6 +352,22 @@ Checked by `address`.
 | 1044 | The input span index does not fit a `u64`. |
 | 1045 | C ABI: a null hash or output pointer, or a null slots or hashes pointer with a non-zero length. |
 
+## Overlay tiles and the layer-aware check (`matter-format.md` section 12.5, `client-compute.md` section 2.2)
+
+Checked by `overlay` in this order, then by `validate::validate_for_layer`. Under a surface key, `gx_validate` checks bytes that begin with `3GSO` as an overlay tile and any other bytes as a surface tile (980 to 990).
+
+| Code | Rule |
+|---|---|
+| 1051 | Fewer than the 32 header bytes. |
+| 1052 | The magic is not `3GSO`. |
+| 1053 | `format_version` is not 1. |
+| 1054 | A reserved field or a flag bit other than EMPTY and ZSTD is set. |
+| 1055 | `frame_id`, `face`, `level`, `x`, or `y` differs from the key. |
+| 1056 | An EMPTY tile has the ZSTD flag, a non-zero `block_len`, or bytes after the header. |
+| 1057 | `block_len` is not the block length (5 x 65^2 + 5 x 33^2 bytes), the bytes after the header are not the block, or the zstd frame is malformed or does not hold exactly the block. |
+| 1058 | Under an overlay layer: a surface tile (`3GSF`) under a surface key, or a valid matter section, registry, or frame record that is not empty. |
+| 1059 | Under any other layer: an overlay tile under a surface key. |
+
 ## Short names
 
 Each code has a short name, the identifier of its constant in `error::codes`, such as `BAD_MAGIC` for 102. `error::code_name` returns it in Rust and `gx_error_name` through the C ABI.
@@ -373,6 +389,7 @@ Declared in `include/gx_core.h` (`matter-format.md` section 7, `client-compute.m
 - `int32_t gx_layer_identity(module32, manifest32_or_null, origin_utc_ms, span_seconds, span_index, slots, slots_len, out32)` and `int32_t gx_section_address_v2(..., slots, slots_len, key, key_len, out32)` compute a layer identity (section 10.5) and a version 2 address (section 3). Slots are `count * 33` bytes: a kind byte (0 layer, 1 frames) and a 32-byte value. They return 0 or 1041 to 1045, and 206 or 207 for the key.
 - `int32_t gx_frames_slot_value(hashes, hashes_len, out32)`, `int32_t gx_inputs_sha256(inputs, inputs_len, out32)`, and `int32_t gx_input_span_index(reader_span_index, reader_span_seconds, input_span_seconds, out)` compute a frames slot value, `X-Inputs-Sha256` over input bytes, and the input span index (section 10.3).
 - `int32_t gx_input_list_validate(list, list_len, count_out_or_null, err_buf, err_cap)` validates an input list (1031 to 1036, 1039) and `int32_t gx_input_list_entry(list, list_len, index, slot_out, key_buf, key_cap, key_len_out)` reads one entry.
+- `int32_t gx_validate_layer(key, key_len, bytes, len, overlay, err_buf, err_cap)` validates as `gx_validate` does for a layer that is an overlay layer when `overlay` is non-zero (section 12.5): under an overlay layer a surface key takes only an overlay tile, a cell key only the empty matter section, `registry` only the empty registry, and a frame key only the empty frame record (1058 otherwise); under any other layer an overlay tile fails with 1059. Return value, `err_buf`, and null pointer rules (106, 206, 207) as `gx_validate`.
 - `const char* gx_error_name(int32_t code)` returns a static NUL-terminated short name, or the empty string for an unknown code (including 0). It never returns NULL and the string must not be freed.
 - Every function is stateless and thread safe.
 
@@ -389,6 +406,8 @@ Declared in `include/gx_core.h` (`matter-format.md` section 7, `client-compute.m
 `conformance/manifest/invalid/` holds at least one file for every code from 901 to 907, and `conformance/manifest/valid/` holds valid manifests with their entries and hashes. `conformance/module-io/request/invalid/`, `tiles/invalid/`, and `sources/invalid/` hold at least one file for every code from 931 to 936, for 941 to 944, and for 951 and 952, each with an `index.json`, beside valid files with their decoded values. `conformance/address/spans.json` has a case for 961.
 
 `conformance/frame-record/invalid/` holds at least one file for every code from 1021 to 1029, named `CODE-RULE.bin`; `index.json` gives the key every file is validated under (`frame-3`) and maps each file name to its code. `conformance/frame-record/valid/` holds a registry, valid records (a frame with moments, one with `j2`, the root, the empty record, and one whose mass differs from the registry), and `index.json` giving each record's key and its `gx_frame_record_agrees` result against the registry.
+
+`conformance/overlay/invalid/` holds at least one file for every code from 1051 to 1057, named `CODE-RULE.bin`, checked under an overlay layer (under `gx_validate` the bad magic file is a surface tile and fails with 981); `index.json` gives the key (`s-7-2-3-5-6`) and maps each file name to its code. `conformance/overlay/valid/` holds overlay tiles (uncompressed, compressed, empty, and one of the example overlay module) with `index.json` giving each key. `conformance/overlay/layer/` holds layer-aware cases for `gx_validate_layer`, each with its key, whether the layer is an overlay layer, and its code (0, 1058, or 1059). `conformance/module-overlay/` holds the example overlay module's cases.
 
 `conformance/input-list/invalid/` holds at least one file for every code from 1031 to 1036 with an `index.json`; `conformance/input-list/inputs.json` has cases for 1037 and 1038. `conformance/address-v2/cases.json` has a case for 1041 and an input span case for 1044.
 

@@ -114,6 +114,8 @@ crates/gx-module-test/   a tiny example module for tests and conformance:
                      each sample
 crates/gx-module-frame/  a tiny version 1 example module that declares one
                      frame, for frames slots in tests
+crates/gx-module-overlay/ a tiny version 1 example module for an overlay
+                     layer: overlay tiles on frame 7, nothing else
 crates/gx-module-reader/ a tiny version 2 example module reading a frame
                      record and gx-module-test's layer
 conformance/         conformance vectors any implementation must pass
@@ -148,6 +150,10 @@ conformance/         conformance vectors any implementation must pass
                      output SHA-256
   module-frame/      example frame module cases: registry, its frame key,
                      and another frame key
+  overlay/           overlay tiles: valid, empty, one invalid file per
+                     code 1051 to 1057, and layer-aware cases (1058, 1059)
+  module-overlay/    example overlay module cases: empty answers, overlay
+                     tiles of frame 7, and another frame's empty tile
   timescale/         UTC to TDB cases with bit patterns, and the inverse
                      inside a leap second
 include/gx_core.h    hand-written C header for the C ABI

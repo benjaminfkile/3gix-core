@@ -6,6 +6,7 @@
  *                  REGISTRY_V1_VECTOR MANIFEST_VECTOR BAD_MANIFEST_VECTOR
  *                  EPOCHS_VECTOR BAD_EPOCHS_VECTOR
  *                  FRAME_REGISTRY FRAME_RECORD DISAGREEING_RECORD
+ *                  OVERLAY_TILE SURFACE_TILE
  *
  * Calls gx_format_version, then gx_validate with a valid registry vector
  * (registry format version 2), a valid matter vector (matter format
@@ -17,7 +18,10 @@
  * conformance/epochs/valid/daily.json and an unsorted index, and
  * gx_section_address against two cases of conformance/address/cases.json,
  * and gx_validate under a frame- key and gx_frame_record_agrees on the
- * vectors of conformance/frame-record/valid/.
+ * vectors of conformance/frame-record/valid/, and gx_validate and
+ * gx_validate_layer on an overlay tile of conformance/overlay/valid/ and a
+ * surface tile of conformance/overlay/layer/ under an overlay layer and
+ * another layer (matter-format.md section 12.5).
  * Run by scripts/ci.sh. Exits 0 when every check passes.
  */
 
@@ -115,11 +119,11 @@ static int32_t validate(const char* key, const uint8_t* bytes, size_t len,
 }
 
 int main(int argc, char** argv) {
-    if (argc != 12) {
+    if (argc != 14) {
         fputs("usage: abi_check REGISTRY_VECTOR MATTER_VECTOR MATTER_KEY "
               "REGISTRY_V1_VECTOR MANIFEST_VECTOR BAD_MANIFEST_VECTOR "
               "EPOCHS_VECTOR BAD_EPOCHS_VECTOR FRAME_REGISTRY FRAME_RECORD "
-              "DISAGREEING_RECORD\n",
+              "DISAGREEING_RECORD OVERLAY_TILE SURFACE_TILE\n",
               stderr);
         return 2;
     }
@@ -281,6 +285,36 @@ int main(int argc, char** argv) {
     free(fr_reg);
     free(fr);
     free(fr_bad);
+
+    /* Overlay tiles under the key of conformance/overlay/. */
+    {
+        const char* ok = "s-7-2-3-5-6";
+        size_t ov_len = 0;
+        size_t sf_len = 0;
+        uint8_t* ov = read_file(argv[12], &ov_len);
+        uint8_t* sf = read_file(argv[13], &sf_len);
+        check(gx_validate((const uint8_t*)ok, strlen(ok), ov, ov_len, err, sizeof err) == 0,
+              "overlay tile validates under a surface key");
+        check(gx_validate_layer((const uint8_t*)ok, strlen(ok), ov, ov_len, 1, err,
+                                sizeof err) == 0,
+              "overlay tile validates under an overlay layer");
+        rc = gx_validate_layer((const uint8_t*)ok, strlen(ok), ov, ov_len, 0, err, sizeof err);
+        printf("      overlay tile under another layer: %d %s: %s\n", (int)rc,
+               gx_error_name(rc), err);
+        check(rc == 1059 && strcmp(gx_error_name(rc), "OVERLAY_NOT_OVERLAY_LAYER") == 0,
+              "overlay tile under another layer returns 1059");
+        check(gx_validate_layer((const uint8_t*)ok, strlen(ok), sf, sf_len, 0, err,
+                                sizeof err) == 0,
+              "surface tile validates under another layer");
+        rc = gx_validate_layer((const uint8_t*)ok, strlen(ok), sf, sf_len, 1, err, sizeof err);
+        check(rc == 1058 && strcmp(gx_error_name(rc), "OVERLAY_LAYER_REFUSED") == 0,
+              "surface tile under an overlay layer returns 1058");
+        check(gx_validate_layer((const uint8_t*)ok, strlen(ok), NULL, 3, 1, err,
+                                sizeof err) == 106,
+              "null bytes with non-zero length returns 106");
+        free(ov);
+        free(sf);
+    }
 
     /* Section addresses, two cases from conformance/address/cases.json. */
     check_address(

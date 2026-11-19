@@ -67,10 +67,14 @@
 //!   5.4).
 //! - [`module_io`]: module request bytes, tile bytes, and the source id
 //!   list (`client-compute.md` section 4).
+//! - [`overlay`]: overlay tiles, encode, decode, validate, and the
+//!   compositing formula every renderer build shares (`matter-format.md`
+//!   section 12, `rendering.md` section 7 item 6).
 //! - [`timescale`]: UTC milliseconds to seconds of Barycentric Dynamical Time
 //!   since J2000 and back (`space-model.md` section 7 item 5).
 //! - The C ABI (`matter-format.md` sections 7 and 11.4, `client-compute.md`
-//!   sections 3, 5.1, and 5.4): [`gx_format_version`], [`gx_validate`],
+//!   sections 3, 5.1, and 5.4, `matter-format.md` section 12.5):
+//!   [`gx_format_version`], [`gx_validate`], [`gx_validate_layer`],
 //!   [`gx_error_name`], [`gx_section_address`], [`gx_manifest_validate`],
 //!   [`gx_epochs_validate`], [`gx_epochs_manifest`],
 //!   [`gx_frame_record_agrees`], and the layer input functions of
@@ -80,7 +84,7 @@
 //!   [`gx_input_list_validate`], and [`gx_input_list_entry`], declared in
 //!   `include/gx_core.h`.
 //! - WebAssembly exports, on `wasm32` only: `format_version`, `validate`,
-//!   `decode_chunk_mass`, `section_address`, `manifest_validate`,
+//!   `validate_layer`, `decode_chunk_mass`, `section_address`, `manifest_validate`,
 //!   `epochs_validate`, `epochs_manifest`,
 //!   `layer_identity`, `section_address_v2`, `frames_slot_value`,
 //!   `inputs_sha256`, `input_span_index`, `input_list_validate`,
@@ -116,6 +120,7 @@ pub mod lod;
 pub mod manifest;
 pub mod matter;
 pub mod module_io;
+pub mod overlay;
 pub mod radiance;
 pub mod registry;
 pub mod rotation;
@@ -125,7 +130,7 @@ pub mod timescale;
 pub mod units;
 pub mod validate;
 
-pub use validate::validate;
+pub use validate::{validate, validate_for_layer};
 
 use error::{codes, ValidationError};
 
@@ -156,7 +161,11 @@ unsafe fn slice<'a>(ptr: *const u8, len: usize) -> Option<&'a [u8]> {
 
 /// The C ABI validation, on safe inputs: null pointer and UTF-8 checks, then
 /// [`validate()`].
-fn validate_ffi(key: Option<&[u8]>, bytes: Option<&[u8]>) -> Result<(), ValidationError> {
+fn validate_ffi(
+    key: Option<&[u8]>,
+    bytes: Option<&[u8]>,
+    overlay: Option<bool>,
+) -> Result<(), ValidationError> {
     let key = key.ok_or_else(|| {
         ValidationError::new(
             codes::KEY_POINTER_NULL,
@@ -175,7 +184,10 @@ fn validate_ffi(key: Option<&[u8]>, bytes: Option<&[u8]>) -> Result<(), Validati
             "bytes: null pointer with non-zero bytes_len",
         )
     })?;
-    validate(key, bytes)
+    match overlay {
+        None => validate(key, bytes),
+        Some(overlay) => validate_for_layer(key, bytes, overlay),
+    }
 }
 
 /// Validates one submitted section, matter or registry chosen by key
@@ -210,7 +222,47 @@ pub unsafe extern "C" fn gx_validate(
     // SAFETY: the caller guarantees each non-null pointer is valid for its
     // length.
     let (key, bytes) = unsafe { (slice(key, key_len), slice(bytes, bytes_len)) };
-    match validate_ffi(key, bytes) {
+    match validate_ffi(key, bytes, None) {
+        Ok(()) => 0,
+        Err(e) => {
+            // SAFETY: the caller guarantees `err_buf` is valid for `err_cap`
+            // bytes when it is non-null and `err_cap` is non-zero.
+            unsafe { write_reason(err_buf.cast::<u8>(), err_cap, &e.reason) };
+            i32::from(e.code)
+        }
+    }
+}
+
+/// Validates one submitted section under its key for a layer that is an
+/// overlay layer when `overlay` is non-zero (`matter-format.md` section
+/// 12.5, `client-compute.md` section 2.2), as
+/// [`validate::validate_for_layer`] does.
+///
+/// Returns 0 on success or the error code on failure, and writes the reason
+/// into `err_buf` exactly as [`gx_validate`] does, with the same null pointer
+/// rules: 207 for a null `key` with a non-zero `key_len`, 206 for a key that
+/// is not UTF-8 or not a chunk key, and 106 for a null `bytes` with a
+/// non-zero `bytes_len`. Under an overlay layer, a surface tile or a section,
+/// registry, or frame record that is not empty fails with 1058; under any
+/// other layer an overlay tile fails with 1059.
+///
+/// # Safety
+///
+/// As [`gx_validate`].
+#[cfg_attr(feature = "exports", no_mangle)]
+pub unsafe extern "C" fn gx_validate_layer(
+    key: *const u8,
+    key_len: usize,
+    bytes: *const u8,
+    bytes_len: usize,
+    overlay: i32,
+    err_buf: *mut c_char,
+    err_cap: usize,
+) -> i32 {
+    // SAFETY: the caller guarantees each non-null pointer is valid for its
+    // length.
+    let (key, bytes) = unsafe { (slice(key, key_len), slice(bytes, bytes_len)) };
+    match validate_ffi(key, bytes, Some(overlay != 0)) {
         Ok(()) => 0,
         Err(e) => {
             // SAFETY: the caller guarantees `err_buf` is valid for `err_cap`
@@ -961,6 +1013,15 @@ mod wasm {
         crate::validate(key, bytes).map_err(js)
     }
 
+    /// Validates one submitted section under a chunk key for a layer that
+    /// is an overlay layer when `overlay` is true (`matter-format.md`
+    /// section 12.5). Throws an `Error` with message `CODE: REASON` on
+    /// failure.
+    #[wasm_bindgen]
+    pub fn validate_layer(key: &str, bytes: &[u8], overlay: bool) -> Result<(), JsError> {
+        crate::validate_for_layer(key, bytes, overlay).map_err(js)
+    }
+
     /// The section address (`client-compute.md` section 3) as lowercase
     /// hex. `module` and `manifest` are 32-byte SHA-256 digests; pass
     /// `undefined` or `null` for no manifest. Throws an `Error` with message
@@ -1247,7 +1308,7 @@ mod wasm {
 pub use wasm::{
     decode_chunk_mass, epochs_manifest, epochs_validate, format_version, frames_slot_value,
     input_list_validate, input_span_index, inputs_sha256, integrate_registry, layer_identity,
-    light_retarded_state, manifest_validate, section_address, section_address_v2,
+    light_retarded_state, manifest_validate, section_address, section_address_v2, validate_layer,
 };
 
 #[cfg(test)]

@@ -4,7 +4,8 @@
 # under Node against the native conformance vectors, headless GPU compute
 # probe, vocabulary lint, native shared library builds (the core library and
 # the module host), the C ABI check program, and the module determinism
-# harness: the example modules (version 1, the frame module, and version 2)
+# harness: the example modules (version 1, the frame module, the overlay
+# module, and version 2)
 # built for wasm32 and run natively through gx-module-host and under Node.
 set -eu
 
@@ -49,6 +50,8 @@ diff -r target/conformance-check/light conformance/light
 diff -r target/conformance-check/module conformance/module
 diff -r target/conformance-check/module-v2 conformance/module-v2
 diff -r target/conformance-check/module-frame conformance/module-frame
+diff -r target/conformance-check/overlay conformance/overlay
+diff -r target/conformance-check/module-overlay conformance/module-overlay
 
 step "5. cargo build wasm32"
 cargo build -p gx-core --release --target wasm32-unknown-unknown
@@ -57,7 +60,7 @@ step "6. wasm-pack build"
 wasm-pack build crates/gx-core --release --target web --out-dir ../../target/wasm-pkg
 
 step "6b. wasm exports in the generated TypeScript declarations"
-for f in format_version validate decode_chunk_mass section_address manifest_validate \
+for f in format_version validate validate_layer decode_chunk_mass section_address manifest_validate \
     epochs_validate epochs_manifest \
     layer_identity section_address_v2 frames_slot_value inputs_sha256 \
     input_span_index input_list_validate \
@@ -105,15 +108,19 @@ LD_LIBRARY_PATH=target/release target/abi-check/abi_check \
     conformance/epochs/invalid/1007-not-ascending.bin \
     conformance/frame-record/valid/registry.bin \
     conformance/frame-record/valid/j2.bin \
-    conformance/frame-record/valid/disagrees-mass.bin
+    conformance/frame-record/valid/disagrees-mass.bin \
+    conformance/overlay/valid/zstd.bin \
+    conformance/overlay/layer/surface-under-overlay.bin
 
 step "12. example modules for wasm32"
-cargo build -p gx-module-test -p gx-module-frame -p gx-module-reader --release \
-    --target wasm32-unknown-unknown
+cargo build -p gx-module-test -p gx-module-frame -p gx-module-reader -p gx-module-overlay \
+    --release --target wasm32-unknown-unknown
 module=target/wasm32-unknown-unknown/release/gx_module_test.wasm
 ls -l "$module" target/wasm32-unknown-unknown/release/gx_module_frame.wasm \
-    target/wasm32-unknown-unknown/release/gx_module_reader.wasm
-sha256sum target/wasm32-unknown-unknown/release/gx_module_reader.wasm
+    target/wasm32-unknown-unknown/release/gx_module_reader.wasm \
+    target/wasm32-unknown-unknown/release/gx_module_overlay.wasm
+sha256sum target/wasm32-unknown-unknown/release/gx_module_reader.wasm \
+    target/wasm32-unknown-unknown/release/gx_module_overlay.wasm
 
 step "13. module determinism harness, native and Node"
 sh scripts/module-determinism.sh "$module" conformance/module
@@ -121,6 +128,8 @@ sh scripts/module-determinism.sh target/wasm32-unknown-unknown/release/gx_module
     conformance/module-frame
 sh scripts/module-determinism.sh target/wasm32-unknown-unknown/release/gx_module_reader.wasm \
     conformance/module-v2
+sh scripts/module-determinism.sh target/wasm32-unknown-unknown/release/gx_module_overlay.wasm \
+    conformance/module-overlay
 
 step "13b. the harness fails on a wrong expected hash"
 rm -rf target/module-vectors-broken

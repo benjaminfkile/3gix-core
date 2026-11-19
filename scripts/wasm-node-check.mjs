@@ -4,7 +4,8 @@
 // 2 addresses, frames slot values, input span indexes, input lists and the
 // inputs hash, UTC to TDB bit patterns and
 // back, source manifest validation, epoch index validation and the epoch
-// rule cases, frame record validation under `frame-` keys, matter format version 3 validation
+// rule cases, frame record validation under `frame-` keys, overlay tile
+// validation and the layer-aware check (`validate_layer`), matter format version 3 validation
 // (every valid and invalid matter vector, and the mass of the matter
 // container), registry format version 2 validation, the integrator's state bytes for the integrate vectors, and
 // the retarded state bytes for the light vectors.
@@ -182,6 +183,24 @@ for (const [file, want] of Object.entries(frInvalid.vectors)) {
 }
 for (let c = 1021; c <= 1029; c++) {
   check(Object.values(frInvalid.vectors).includes(c), `frame record vector for code ${c}`);
+}
+
+const ovValid = json("overlay/valid/index.json");
+for (const [file, want] of Object.entries(ovValid.tiles)) {
+  const got = code(() => gx.validate(want.key, bin(`overlay/valid/${file}`)));
+  check(got === 0, `overlay ${file}: ${got}`);
+}
+const ovInvalid = json("overlay/invalid/index.json");
+for (const [file, want] of Object.entries(ovInvalid.vectors)) {
+  const got = code(() => gx.validate_layer(ovInvalid.key, bin(`overlay/invalid/${file}`), true));
+  check(got === want, `overlay ${file}: ${got}`);
+}
+for (let c = 1051; c <= 1057; c++) {
+  check(Object.values(ovInvalid.vectors).includes(c), `overlay vector for code ${c}`);
+}
+for (const [file, c] of Object.entries(json("overlay/layer/index.json").cases)) {
+  const got = code(() => gx.validate_layer(c.key, bin(`overlay/layer/${file}`), c.overlay));
+  check(got === c.code, `overlay layer ${file}: ${got}, want ${c.code}`);
 }
 
 check(gx.format_version() === 3, `format_version is ${gx.format_version()}`);
