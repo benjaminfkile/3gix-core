@@ -56,6 +56,8 @@ fn every_vector_matches_the_parser() {
                 // The key vectors list registry and cell keys; surface
                 // keys are tested in `surface`.
                 ChunkKey::Surface(t) => panic!("{key:?} parsed as a surface key {t:?}"),
+                // Frame record keys are tested in `key` and `frame_record`.
+                ChunkKey::Frame(id) => panic!("{key:?} parsed as a frame record key {id}"),
             }
         } else {
             invalid += 1;

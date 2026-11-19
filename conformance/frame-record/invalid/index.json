@@ -1,0 +1,18 @@
+{
+  "key": "frame-3",
+  "vectors": {
+    "1021-length-long.bin": 1021,
+    "1021-length-short.bin": 1021,
+    "1022-bad-magic.bin": 1022,
+    "1023-unsupported-version.bin": 1023,
+    "1024-unknown-flags.bin": 1024,
+    "1025-reserved-nonzero.bin": 1025,
+    "1026-id-mismatch.bin": 1026,
+    "1027-empty-nonzero.bin": 1027,
+    "1028-extent-zero.bin": 1028,
+    "1028-mass-negative.bin": 1028,
+    "1028-max-depth.bin": 1028,
+    "1029-moments-triangle.bin": 1029,
+    "1029-radius-without-j2.bin": 1029
+  }
+}

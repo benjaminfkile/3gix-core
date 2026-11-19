@@ -308,6 +308,22 @@ A composite whose summed density overflows `f32` fails with 501, because the res
 | 1010 | `epoch seconds` is not a whole multiple of the layer's `span_seconds`. |
 | 1011 | `gx_epochs_manifest` was given a null `out32`. |
 
+## Frame records (`matter-format.md` section 11.3)
+
+Checked by `frame_record::validate` (and `gx_validate` under a `frame-{frameId}` key) in this order. `frame_record::decode` runs the same checks without 1026.
+
+| Code | Rule |
+|---|---|
+| 1021 | The record is not exactly 88 bytes. |
+| 1022 | The magic is not `3GFR` (`0x33 0x47 0x46 0x52`). |
+| 1023 | `format_version` is not 1. |
+| 1024 | A `flags` bit other than bit 0 (EMPTY) is set. |
+| 1025 | A reserved byte at offsets 33 to 39 is not 0. |
+| 1026 | `frame_id` differs from the key. |
+| 1027 | EMPTY is set and a byte after `frame_id` is not 0 (so `-0.0` is refused). |
+| 1028 | `root_extent` is not finite and greater than 0, `max_depth` is above 31, or `mass` is not finite and at least 0 (section 5.2). |
+| 1029 | `j2` is not finite and at least 0, `reference_radius` is not finite, not greater than 0 while `j2` is, or not 0 while `j2` is 0, or `principal_moments` are not finite, not all 0 or all greater than 0, or one is greater than the sum of the other two (section 5.2). |
+
 ## Short names
 
 Each code has a short name, the identifier of its constant in `error::codes`, such as `BAD_MAGIC` for 102. `error::code_name` returns it in Rust and `gx_error_name` through the C ABI.
@@ -325,6 +341,7 @@ Declared in `include/gx_core.h` (`matter-format.md` section 7, `client-compute.m
 - `int32_t gx_manifest_validate(bytes, len, err_buf, err_cap)` validates a source manifest, returning 0 or a code from 901 to 907 (106 for a null `bytes` with a non-zero `len`), and writes the reason to `err_buf` under the same rules as `gx_validate`.
 - `int32_t gx_epochs_validate(bytes, len, err_buf, err_cap)` validates an epoch index, returning 0 or a code from 1001 to 1007 (106 for a null `bytes` with a non-zero `len`), and writes the reason to `err_buf` under the same rules as `gx_validate`.
 - `int32_t gx_epochs_manifest(bytes, len, span_seconds, span_index, out32)` applies the epoch rule: epoch `floor(span_index * span_seconds / epoch_seconds)`, computed without overflow. It returns 0 and writes the epoch's 32-byte manifest hash to `out32`, or 1 when the index does not list the epoch (the section's address then takes 32 zero bytes). Otherwise it returns a code from this table negated (-1011, -106, -1001 to -1007, -1009, -1010, in the check order above) and leaves `out32` untouched; 1 and 0 are never codes, so the sign tells them apart.
+- `int32_t gx_frame_record_agrees(registry, registry_len, record, record_len)` checks section 11.4: 0 when the registry declares the record's frame and the seven constant fields are bitwise equal, -1 when the registry does not declare the frame, -2 to -8 for the first differing field (`parent_frame_id`, `root_extent`, `max_depth`, `mass`, `j2`, `reference_radius`, `principal_moments`), or a code from this table negated: -106 for a null pointer with a non-zero length, -601 to -633 for an invalid registry (checked first), -1021 to -1029 for an invalid record (decoded without a key).
 - `const char* gx_error_name(int32_t code)` returns a static NUL-terminated short name, or the empty string for an unknown code (including 0). It never returns NULL and the string must not be freed.
 - Every function is stateless and thread safe.
 
@@ -339,5 +356,7 @@ Declared in `include/gx_core.h` (`matter-format.md` section 7, `client-compute.m
 `conformance/container/invalid/` holds one file for every code from 701 to 713, named `CODE-RULE.bin`, plus a container whose table is sound but whose first section fails with 102. `index.json` gives the key every file is decoded under and maps each file name to its code. `conformance/container/valid/` holds a matter chunk and a registry chunk with the expected decode results.
 
 `conformance/manifest/invalid/` holds at least one file for every code from 901 to 907, and `conformance/manifest/valid/` holds valid manifests with their entries and hashes. `conformance/module-io/request/invalid/`, `tiles/invalid/`, and `sources/invalid/` hold at least one file for every code from 931 to 936, for 941 to 944, and for 951 and 952, each with an `index.json`, beside valid files with their decoded values. `conformance/address/spans.json` has a case for 961.
+
+`conformance/frame-record/invalid/` holds at least one file for every code from 1021 to 1029, named `CODE-RULE.bin`; `index.json` gives the key every file is validated under (`frame-3`) and maps each file name to its code. `conformance/frame-record/valid/` holds a registry, valid records (a frame with moments, one with `j2`, the root, the empty record, and one whose mass differs from the registry), and `index.json` giving each record's key and its `gx_frame_record_agrees` result against the registry.
 
 `conformance/epochs/invalid/` holds at least one file for every code from 1001 to 1007, with an `index.json`. `conformance/epochs/valid/` holds valid epoch indexes with their entries and hashes and a table of epoch rule cases: `span_seconds` and `span_index` as decimal strings and the expected manifest hash, `null` for an epoch that is not listed, or the expected code (1009, 1010). The cases include span indexes on both sides of epoch boundaries and span indexes near the top of the `u64` range.

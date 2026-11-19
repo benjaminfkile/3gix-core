@@ -36,7 +36,9 @@ fn read_json(rel: &str) -> Value {
 fn cell(key: &str) -> CellKey {
     match key.parse::<ChunkKey>().expect("key parses") {
         ChunkKey::Cell(c) => c,
-        ChunkKey::Registry | ChunkKey::Surface(_) => panic!("expected a cell key"),
+        ChunkKey::Registry | ChunkKey::Surface(_) | ChunkKey::Frame(_) => {
+            panic!("expected a cell key")
+        }
     }
 }
 

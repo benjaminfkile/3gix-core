@@ -1,5 +1,5 @@
 //! Regenerates the matter section, frame registry, hub container, section
-//! address, source manifest, epoch index, module request and tile, example
+//! address, source manifest, epoch index, frame record, module request and tile, example
 //! module, time
 //! scale, integrator, and light-time conformance vectors.
 //!
@@ -7,7 +7,7 @@
 //! `OUT_DIR/matter/invalid/`, `OUT_DIR/registry/` (see the [`registry`]
 //! module), `OUT_DIR/container/` (see the [`container`] module),
 //! `OUT_DIR/address/` ([`address`]), `OUT_DIR/manifest/` ([`manifest`]),
-//! `OUT_DIR/epochs/` ([`epochs`]),
+//! `OUT_DIR/epochs/` ([`epochs`]), `OUT_DIR/frame-record/` ([`frame_record`]),
 //! `OUT_DIR/module-io/` ([`module_io`]), `OUT_DIR/module/` ([`module`]),
 //! `OUT_DIR/timescale/`
 //! ([`timescale`]), `OUT_DIR/integrate/` ([`integrate`]), and
@@ -49,6 +49,7 @@ use serde_json::{json, Value};
 mod address;
 mod container;
 mod epochs;
+mod frame_record;
 mod integrate;
 mod light;
 mod manifest;
@@ -929,6 +930,7 @@ fn generate() -> Vec<File> {
     files.extend(address::files());
     files.extend(manifest::files());
     files.extend(epochs::files());
+    files.extend(frame_record::files());
     files.extend(module_io::files());
     files.extend(module::files());
     files.extend(timescale::files());

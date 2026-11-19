@@ -26,6 +26,7 @@
 //! | 960 to 979 | section addresses and span indices (`client-compute.md` sections 2.4 and 3) |
 //! | 980 to 999 | surface tiles (`matter-format.md` section 10) |
 //! | 1000 to 1019 | epoch indexes and the epoch rule (`client-compute.md` section 5.4) |
+//! | 1020 to 1039 | frame records (`matter-format.md` section 11) |
 //!
 //! The full table with the check order lives in `docs/errors.md`. A code
 //! never changes meaning once published. New rules get new codes.
@@ -483,6 +484,31 @@ pub mod codes {
         EPOCHS_SPAN_NOT_DIVISOR = 1010;
         /// The C ABI was given a null `out32` pointer.
         EPOCHS_POINTER_NULL = 1011;
+
+        // 1020 to 1039: frame records (`matter-format.md` section 11.3).
+        // Checked by `frame_record`.
+
+        /// The record is not exactly 88 bytes.
+        FRAME_RECORD_LENGTH = 1021;
+        /// The magic is not `3GFR` (`0x33 0x47 0x46 0x52`).
+        FRAME_RECORD_BAD_MAGIC = 1022;
+        /// `format_version` is not 1.
+        FRAME_RECORD_UNSUPPORTED_VERSION = 1023;
+        /// A `flags` bit other than bit 0 (EMPTY) is set.
+        FRAME_RECORD_UNKNOWN_FLAGS = 1024;
+        /// A reserved byte at offsets 33 to 39 is not 0.
+        FRAME_RECORD_RESERVED_NONZERO = 1025;
+        /// `frame_id` differs from the key.
+        FRAME_RECORD_ID_MISMATCH = 1026;
+        /// EMPTY is set and a field other than `frame_id` is not 0.
+        FRAME_RECORD_EMPTY_NONZERO = 1027;
+        /// `root_extent` is not finite and greater than 0, `max_depth` is
+        /// above 31, or `mass` is not finite and at least 0 (section 5.2).
+        FRAME_RECORD_FIELD = 1028;
+        /// `j2` is not finite and at least 0, `reference_radius` breaks its
+        /// rule against `j2`, or `principal_moments` are not finite, not all 0
+        /// or all greater than 0, or break the triangle rule (section 5.2).
+        FRAME_RECORD_SHAPE = 1029;
     }
 }
 

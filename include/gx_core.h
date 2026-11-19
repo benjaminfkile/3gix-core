@@ -120,6 +120,33 @@ int32_t gx_epochs_manifest(const uint8_t* bytes, size_t len,
                            uint64_t span_seconds, uint64_t span_index,
                            uint8_t* out32);
 
+/* gx_frame_record_agrees results other than 0 and the negated error codes. */
+#define GX_FRAME_ABSENT (-1)
+#define GX_FRAME_DIFFERS_PARENT_FRAME_ID (-2)
+#define GX_FRAME_DIFFERS_ROOT_EXTENT (-3)
+#define GX_FRAME_DIFFERS_MAX_DEPTH (-4)
+#define GX_FRAME_DIFFERS_MASS (-5)
+#define GX_FRAME_DIFFERS_J2 (-6)
+#define GX_FRAME_DIFFERS_REFERENCE_RADIUS (-7)
+#define GX_FRAME_DIFFERS_PRINCIPAL_MOMENTS (-8)
+
+/*
+ * Checks a frame record (matter-format.md section 11) against a frame
+ * registry (section 5): section 11.4, bitwise equality of parent_frame_id,
+ * root_extent, max_depth, mass, j2, reference_radius, and principal_moments.
+ * The record is decoded without a key; its own frame_id names the frame.
+ *
+ * Returns 0 when the registry declares the record's frame and every field
+ * agrees. Returns GX_FRAME_ABSENT (-1) when the registry does not declare the
+ * frame, and -2 to -8 (the GX_FRAME_DIFFERS_ constants above) for the first
+ * field, in record order, that differs. An EMPTY record is compared like any
+ * other and so disagrees. Invalid input returns a code of docs/errors.md
+ * negated: -106 for a NULL pointer with a non-zero length, -601 to -633 for
+ * an invalid registry (checked first), -1021 to -1029 for an invalid record.
+ */
+int32_t gx_frame_record_agrees(const uint8_t* registry, size_t registry_len,
+                               const uint8_t* record, size_t record_len);
+
 #ifdef __cplusplus
 }
 #endif

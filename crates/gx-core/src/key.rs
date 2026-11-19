@@ -3,8 +3,9 @@
 //! Implements `matter-format.md` section 2 (chunk keys) and section 3.1 (cell
 //! geometry).
 //!
-//! A chunk key is either the literal `registry`, naming the frame registry, or
-//! five decimal integers joined by `-`:
+//! A chunk key is the literal `registry`, naming the frame registry, a frame
+//! record key `frame-{frameId}` naming one frame's record (section 11), a
+//! surface tile key (section 10.1), or five decimal integers joined by `-`:
 //! `frame_id-depth-x-y-z`. Each part is ASCII digits only with no sign, no
 //! whitespace, and no leading zero (a bare `0` is allowed). `frame_id` is a
 //! `u64`, `depth` is at most 31, and each coordinate is below `2^depth`. Any
@@ -37,7 +38,13 @@ pub enum ChunkKey {
     Cell(CellKey),
     /// One tile of one frame's surface (`matter-format.md` section 10).
     Surface(SurfaceKey),
+    /// One frame's record (`matter-format.md` section 11), written
+    /// `frame-{frameId}` with the frame id as the value.
+    Frame(u64),
 }
+
+/// Prefix of a frame record key: `frame-frame_id`.
+pub const FRAME_PREFIX: &str = "frame-";
 
 /// Prefix of a surface tile key: `s-frame_id-face-level-x-y`.
 pub const SURFACE_PREFIX: &str = "s-";
@@ -272,14 +279,24 @@ impl FromStr for ChunkKey {
     type Err = KeyError;
 
     /// Parses a chunk key per section 2. Checks run in this order: empty
-    /// input, the `registry` literal, characters, part count, then each part
-    /// left to right (empty, leading zero, overflow, range).
+    /// input, the `registry` literal, the `frame-` prefix (then characters,
+    /// empty, leading zero, overflow of its one part), the `s-` prefix, then
+    /// characters, part count, and each part left to right (empty, leading
+    /// zero, overflow, range).
     fn from_str(s: &str) -> Result<Self, KeyError> {
         if s.is_empty() {
             return Err(KeyError::Empty);
         }
         if s == REGISTRY_KEY {
             return Ok(ChunkKey::Registry);
+        }
+        if let Some(rest) = s.strip_prefix(FRAME_PREFIX) {
+            if let Some(offset) = rest.bytes().position(|b| !b.is_ascii_digit()) {
+                return Err(KeyError::InvalidCharacter {
+                    offset: offset + FRAME_PREFIX.len(),
+                });
+            }
+            return parse_part(rest, 0).map(ChunkKey::Frame);
         }
         if let Some(rest) = s.strip_prefix(SURFACE_PREFIX) {
             if let Some(offset) = rest
@@ -345,12 +362,14 @@ impl FromStr for ChunkKey {
 }
 
 impl fmt::Display for ChunkKey {
-    /// Writes the canonical form: `registry`, or `frame_id-depth-x-y-z`.
+    /// Writes the canonical form: `registry`, `frame-frame_id`,
+    /// `s-frame_id-face-level-x-y`, or `frame_id-depth-x-y-z`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ChunkKey::Registry => f.write_str(REGISTRY_KEY),
             ChunkKey::Cell(c) => fmt::Display::fmt(c, f),
             ChunkKey::Surface(t) => fmt::Display::fmt(t, f),
+            ChunkKey::Frame(id) => write!(f, "{FRAME_PREFIX}{id}"),
         }
     }
 }
@@ -514,6 +533,41 @@ mod tests {
         assert_eq!(
             parse("42-3-5-2-7"),
             Ok(ChunkKey::Cell(cell(42, 3, 5, 2, 7)))
+        );
+    }
+
+    #[test]
+    fn frame_keys() {
+        for s in ["frame-0", "frame-7", "frame-18446744073709551615"] {
+            let k = parse(s).unwrap();
+            assert_eq!(k.to_string(), s);
+        }
+        assert_eq!(parse("frame-42"), Ok(ChunkKey::Frame(42)));
+        assert_eq!(
+            ChunkKey::Frame(u64::MAX).to_string(),
+            "frame-18446744073709551615"
+        );
+        assert_eq!(parse("frame-"), Err(KeyError::EmptyPart { part: 0 }));
+        assert_eq!(parse("frame-01"), Err(KeyError::LeadingZero { part: 0 }));
+        assert_eq!(
+            parse("frame--1"),
+            Err(KeyError::InvalidCharacter { offset: 6 })
+        );
+        assert_eq!(
+            parse("frame-18446744073709551616"),
+            Err(KeyError::Overflow { part: 0 })
+        );
+        assert_eq!(
+            parse("frame-1-2"),
+            Err(KeyError::InvalidCharacter { offset: 7 })
+        );
+        assert_eq!(
+            parse("frame- 1"),
+            Err(KeyError::InvalidCharacter { offset: 6 })
+        );
+        assert_eq!(
+            parse("Frame-1"),
+            Err(KeyError::InvalidCharacter { offset: 0 })
         );
     }
 

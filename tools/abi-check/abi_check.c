@@ -5,6 +5,7 @@
  * Usage: abi_check REGISTRY_VECTOR MATTER_VECTOR MATTER_KEY
  *                  REGISTRY_V1_VECTOR MANIFEST_VECTOR BAD_MANIFEST_VECTOR
  *                  EPOCHS_VECTOR BAD_EPOCHS_VECTOR
+ *                  FRAME_REGISTRY FRAME_RECORD DISAGREEING_RECORD
  *
  * Calls gx_format_version, then gx_validate with a valid registry vector
  * (registry format version 2), a valid matter vector (matter format
@@ -14,7 +15,9 @@
  * gx_manifest_validate on a valid and an unsorted manifest,
  * gx_epochs_validate and gx_epochs_manifest on the daily epoch index of
  * conformance/epochs/valid/daily.json and an unsorted index, and
- * gx_section_address against two cases of conformance/address/cases.json.
+ * gx_section_address against two cases of conformance/address/cases.json,
+ * and gx_validate under a frame- key and gx_frame_record_agrees on the
+ * vectors of conformance/frame-record/valid/.
  * Run by scripts/ci.sh. Exits 0 when every check passes.
  */
 
@@ -112,10 +115,11 @@ static int32_t validate(const char* key, const uint8_t* bytes, size_t len,
 }
 
 int main(int argc, char** argv) {
-    if (argc != 9) {
+    if (argc != 12) {
         fputs("usage: abi_check REGISTRY_VECTOR MATTER_VECTOR MATTER_KEY "
               "REGISTRY_V1_VECTOR MANIFEST_VECTOR BAD_MANIFEST_VECTOR "
-              "EPOCHS_VECTOR BAD_EPOCHS_VECTOR\n",
+              "EPOCHS_VECTOR BAD_EPOCHS_VECTOR FRAME_REGISTRY FRAME_RECORD "
+              "DISAGREEING_RECORD\n",
               stderr);
         return 2;
     }
@@ -253,6 +257,30 @@ int main(int argc, char** argv) {
     check(man_hash[0] == 0x7f, "none and failures leave out32 untouched");
     free(ep);
     free(bad_ep);
+
+    /* Frame records, from conformance/frame-record/valid/index.json. */
+    size_t fr_reg_len = 0;
+    size_t fr_len = 0;
+    size_t fr_bad_len = 0;
+    uint8_t* fr_reg = read_file(argv[9], &fr_reg_len);
+    uint8_t* fr = read_file(argv[10], &fr_len);
+    uint8_t* fr_bad = read_file(argv[11], &fr_bad_len);
+    check(gx_validate((const uint8_t*)"frame-3", 7, fr, fr_len, err, sizeof err) == 0,
+          "frame record validates under frame-3");
+    rc = gx_validate((const uint8_t*)"frame-2", 7, fr, fr_len, err, sizeof err);
+    printf("      frame record under frame-2: %d %s: %s\n", (int)rc, gx_error_name(rc), err);
+    check(rc == 1026 && strcmp(gx_error_name(rc), "FRAME_RECORD_ID_MISMATCH") == 0,
+          "frame record under another key returns 1026");
+    check(gx_frame_record_agrees(fr_reg, fr_reg_len, fr, fr_len) == 0,
+          "frame record agrees with the registry");
+    check(gx_frame_record_agrees(fr_reg, fr_reg_len, fr_bad, fr_bad_len) ==
+              GX_FRAME_DIFFERS_MASS,
+          "a record with another mass returns GX_FRAME_DIFFERS_MASS");
+    check(gx_frame_record_agrees(fr_reg, fr_reg_len, NULL, 3) == -106,
+          "null record with non-zero length returns -106");
+    free(fr_reg);
+    free(fr);
+    free(fr_bad);
 
     /* Section addresses, two cases from conformance/address/cases.json. */
     check_address(

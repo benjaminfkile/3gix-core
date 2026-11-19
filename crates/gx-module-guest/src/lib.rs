@@ -367,6 +367,7 @@ mod tests {
                 ChunkKey::Registry => Vec::new(),
                 ChunkKey::Cell(c) => vec![c.frame_id, c.frame_id + 1],
                 ChunkKey::Surface(_) => Vec::new(),
+                ChunkKey::Frame(_) => Vec::new(),
             }
         }
         fn compile(req: &Request, tiles: &Tiles) -> Result<Vec<u8>, String> {
@@ -381,6 +382,9 @@ mod tests {
                     Ok(matter::encode(&s, Compression::None))
                 }
                 ChunkKey::Surface(t) => Ok(gx_core::surface::encode_empty(&t)),
+                ChunkKey::Frame(id) => Ok(gx_core::frame_record::encode(
+                    &gx_core::frame_record::FrameRecord::empty(id),
+                )),
             }
         }
     }

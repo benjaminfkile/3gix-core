@@ -16,6 +16,10 @@
 //!   validate, and the union of a build's registries as a
 //!   [`registry::FrameTree`] (`matter-format.md` section 5, frame registry:
 //!   header 5.1, frame records and union rules 5.2, empty registry 5.3).
+//! - [`frame_record`]: frame records, the constant part of one frame's
+//!   registry record under the key `frame-{frameId}`: encode, decode,
+//!   validate, and agreement with the registry (`matter-format.md` section
+//!   11).
 //! - [`frames`]: reference frames with a floating origin, the current state
 //!   of every frame, and the transforms between frames (`space-model.md`
 //!   section 5, numerical devices, and section 6, time).
@@ -65,10 +69,11 @@
 //!   list (`client-compute.md` section 4).
 //! - [`timescale`]: UTC milliseconds to seconds of Barycentric Dynamical Time
 //!   since J2000 and back (`space-model.md` section 7 item 5).
-//! - The C ABI (`matter-format.md` section 7, `client-compute.md` sections 3,
-//!   5.1, and 5.4): [`gx_format_version`], [`gx_validate`], [`gx_error_name`],
-//!   [`gx_section_address`], [`gx_manifest_validate`], [`gx_epochs_validate`],
-//!   and [`gx_epochs_manifest`], declared in
+//! - The C ABI (`matter-format.md` sections 7 and 11.4, `client-compute.md`
+//!   sections 3, 5.1, and 5.4): [`gx_format_version`], [`gx_validate`],
+//!   [`gx_error_name`], [`gx_section_address`], [`gx_manifest_validate`],
+//!   [`gx_epochs_validate`], [`gx_epochs_manifest`], and
+//!   [`gx_frame_record_agrees`], declared in
 //!   `include/gx_core.h`.
 //! - WebAssembly exports, on `wasm32` only: `format_version`, `validate`,
 //!   `decode_chunk_mass`, `section_address`, `manifest_validate`,
@@ -94,6 +99,7 @@ pub mod emission;
 pub mod epochs;
 pub mod error;
 pub mod extinction;
+pub mod frame_record;
 pub mod frames;
 pub mod gravity;
 pub mod history;
@@ -440,6 +446,74 @@ fn epochs_manifest_ffi(
     })?;
     let index = epochs::decode(bytes)?;
     epochs::manifest_for_span(&index, span_seconds, span_index)
+}
+
+/// Checks a frame record against a frame registry (`matter-format.md`
+/// section 11.4).
+///
+/// Decodes the registry and the record (the record without a key, so its
+/// own `frame_id` names the frame), finds the frame in the registry, and
+/// compares the seven constant fields bitwise with [`frame_record::agrees`].
+/// Returns 0 when the frame is in the registry and every field agrees, minus
+/// 1 when the registry does not declare the record's frame, and minus 2 to
+/// minus 8 for the first differing field in record order:
+/// `parent_frame_id` (-2), `root_extent` (-3), `max_depth` (-4), `mass`
+/// (-5), `j2` (-6), `reference_radius` (-7), `principal_moments` (-8). An
+/// EMPTY record is compared like any other, so it disagrees with any frame.
+/// Invalid input returns a code from `docs/errors.md` negated: -106 for a
+/// null pointer with a non-zero length, -601 to -633 for an invalid registry
+/// (checked first), -1021 to -1029 for an invalid record. Every code is at
+/// least 101, so the two ranges never meet.
+///
+/// # Safety
+///
+/// A non-null `registry` must be valid for `registry_len` readable bytes and
+/// a non-null `record` for `record_len`.
+#[cfg_attr(feature = "exports", no_mangle)]
+pub unsafe extern "C" fn gx_frame_record_agrees(
+    registry: *const u8,
+    registry_len: usize,
+    record: *const u8,
+    record_len: usize,
+) -> i32 {
+    // SAFETY: the caller guarantees a non-null pointer is valid for its
+    // length.
+    let (registry, record) = unsafe { (slice(registry, registry_len), slice(record, record_len)) };
+    match (registry, record) {
+        (Some(g), Some(r)) => frame_record_agrees_ffi(g, r),
+        _ => -i32::from(codes::BYTES_POINTER_NULL),
+    }
+}
+
+/// The C ABI agreement check on safe inputs: decode both, find the frame,
+/// compare, and map the outcome to the codes of [`gx_frame_record_agrees`].
+fn frame_record_agrees_ffi(registry_bytes: &[u8], record_bytes: &[u8]) -> i32 {
+    use frame_record::Field;
+    let registry = match registry::decode(registry_bytes) {
+        Ok(g) => g,
+        Err(e) => return -i32::from(e.code),
+    };
+    let record = match frame_record::decode(record_bytes) {
+        Ok(r) => r,
+        Err(e) => return -i32::from(e.code),
+    };
+    let Some(frame) = registry
+        .frames()
+        .iter()
+        .find(|f| f.frame_id == record.frame_id)
+    else {
+        return -1;
+    };
+    match frame_record::agrees(frame, &record) {
+        Ok(()) => 0,
+        Err(Field::ParentFrameId) => -2,
+        Err(Field::RootExtent) => -3,
+        Err(Field::MaxDepth) => -4,
+        Err(Field::Mass) => -5,
+        Err(Field::J2) => -6,
+        Err(Field::ReferenceRadius) => -7,
+        Err(Field::PrincipalMoments) => -8,
+    }
 }
 
 /// Returns the short name of an error code, such as `BAD_MAGIC` for 102, as
