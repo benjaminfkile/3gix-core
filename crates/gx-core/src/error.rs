@@ -26,7 +26,9 @@
 //! | 960 to 979 | section addresses and span indices (`client-compute.md` sections 2.4 and 3) |
 //! | 980 to 999 | surface tiles (`matter-format.md` section 10) |
 //! | 1000 to 1019 | epoch indexes and the epoch rule (`client-compute.md` section 5.4) |
-//! | 1020 to 1039 | frame records (`matter-format.md` section 11) |
+//! | 1020 to 1030 | frame records (`matter-format.md` section 11) |
+//! | 1031 to 1039 | input lists and input bytes (`client-compute.md` section 4.1) |
+//! | 1041 to 1049 | identities, address version 2, and the input span rule (`client-compute.md` sections 3, 10.3, and 10.5) |
 //!
 //! The full table with the check order lives in `docs/errors.md`. A code
 //! never changes meaning once published. New rules get new codes.
@@ -485,7 +487,7 @@ pub mod codes {
         /// The C ABI was given a null `out32` pointer.
         EPOCHS_POINTER_NULL = 1011;
 
-        // 1020 to 1039: frame records (`matter-format.md` section 11.3).
+        // 1020 to 1030: frame records (`matter-format.md` section 11.3).
         // Checked by `frame_record`.
 
         /// The record is not exactly 88 bytes.
@@ -509,6 +511,50 @@ pub mod codes {
         /// rule against `j2`, or `principal_moments` are not finite, not all 0
         /// or all greater than 0, or break the triangle rule (section 5.2).
         FRAME_RECORD_SHAPE = 1029;
+
+        // 1031 to 1039: input lists and input bytes (`client-compute.md`
+        // section 4.1). Checked by `module_io`.
+
+        /// Fewer than 4 bytes, so an input list has no count.
+        INPUT_LIST_TOO_SHORT = 1031;
+        /// An input list has more than 64 entries.
+        INPUT_LIST_TOO_MANY = 1032;
+        /// An input list entry's slot, key length, or key runs past the end.
+        INPUT_LIST_TRUNCATED = 1033;
+        /// Bytes follow the last input list entry.
+        INPUT_LIST_TRAILING_BYTES = 1034;
+        /// An input list key is not UTF-8 or not a chunk key.
+        INPUT_LIST_KEY_MALFORMED = 1035;
+        /// Input list entries are not sorted by slot, then by key bytes, or
+        /// two entries are equal.
+        INPUT_LIST_NOT_SORTED = 1036;
+        /// Input bytes have fewer than 4 bytes, an input runs past the end,
+        /// or an input is too long for a `u32` length.
+        INPUTS_TRUNCATED = 1037;
+        /// Bytes follow the last input.
+        INPUTS_TRAILING_BYTES = 1038;
+        /// The C ABI was given a null pointer with a non-zero length, a null
+        /// output pointer, an entry index past the end, or a key buffer too
+        /// small.
+        INPUT_ARGUMENT = 1039;
+
+        // 1041 to 1049: identities, address version 2, and the input span
+        // rule (`client-compute.md` sections 3, 10.3, and 10.5). Checked by
+        // `address`.
+
+        /// An address version 2 was asked for with no input slots; a layer
+        /// without inputs uses version 1.
+        ADDRESS_V2_NO_INPUTS = 1041;
+        /// A slot kind byte is neither 0 (layer slot) nor 1 (frames slot).
+        SLOT_KIND_UNKNOWN = 1042;
+        /// Slot bytes are not a multiple of 33, or record hash bytes not a
+        /// multiple of 32, or more slots than a `u32` counts.
+        SLOTS_LENGTH = 1043;
+        /// The input span index does not fit a `u64`.
+        INPUT_SPAN_OVERFLOW = 1044;
+        /// The C ABI was given a null pointer for a hash or an output, or a
+        /// null slot pointer with a non-zero length.
+        IDENTITY_POINTER_NULL = 1045;
     }
 }
 

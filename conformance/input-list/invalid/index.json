@@ -1,0 +1,13 @@
+{
+  "1031-empty.bin": 1031,
+  "1031-three-bytes.bin": 1031,
+  "1032-count-65.bin": 1032,
+  "1033-header-cut.bin": 1033,
+  "1033-key-cut.bin": 1033,
+  "1034-trailing.bin": 1034,
+  "1035-key-not-a-key.bin": 1035,
+  "1035-key-not-utf8.bin": 1035,
+  "1036-duplicate.bin": 1036,
+  "1036-key-descending.bin": 1036,
+  "1036-slot-descending.bin": 1036
+}

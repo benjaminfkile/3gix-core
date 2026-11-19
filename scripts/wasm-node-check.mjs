@@ -1,6 +1,8 @@
 // Runs the WebAssembly build under Node (V8, standing in for the browser)
 // against the conformance vectors the native build is tested with, so the two
-// must agree byte for byte: section addresses, UTC to TDB bit patterns and
+// must agree byte for byte: section addresses, layer identities and version
+// 2 addresses, frames slot values, input span indexes, input lists and the
+// inputs hash, UTC to TDB bit patterns and
 // back, source manifest validation, epoch index validation and the epoch
 // rule cases, frame record validation under `frame-` keys, matter format version 3 validation
 // (every valid and invalid matter vector, and the mass of the matter
@@ -66,6 +68,66 @@ check(code(() => gx.section_address(new Uint8Array(31), undefined, 0n, 0n, 0n, "
   "short module hash throws 962");
 check(code(() => gx.section_address(new Uint8Array(32), undefined, 0n, 0n, 0n, "1-0-0-0-1")) === 206,
   "malformed key throws 206");
+
+{
+  const v = json("address-v2/cases.json");
+  for (const f of v.frames) {
+    const flat = new Uint8Array(32 * f.records.length);
+    f.records.forEach((r, i) => flat.set(hex(r), 32 * i));
+    check(gx.frames_slot_value(flat) === f.value, `frames_slot_value ${f.name}`);
+  }
+  for (const s of v.input_spans) {
+    const args = [BigInt(s.reader_span_index), BigInt(s.reader_span_seconds), BigInt(s.input_span_seconds)];
+    if (s.input_span_index !== undefined) {
+      check(gx.input_span_index(...args) === BigInt(s.input_span_index), `input_span_index ${JSON.stringify(s)}`);
+    } else {
+      check(code(() => gx.input_span_index(...args)) === s.code, `input_span_index code ${JSON.stringify(s)}`);
+    }
+  }
+  const slots = (c) => {
+    const b = new Uint8Array(33 * c.slots.length);
+    c.slots.forEach((s, i) => {
+      b[33 * i] = s.kind === "layer" ? 0 : 1;
+      b.set(hex(s.value), 33 * i + 1);
+    });
+    return b;
+  };
+  const head = (c) => [
+    hex(c.module),
+    c.manifest === null ? undefined : hex(c.manifest),
+    BigInt(c.origin_utc_ms),
+    BigInt(c.span_seconds),
+    BigInt(c.span_index),
+    slots(c),
+  ];
+  for (const c of v.identities) {
+    check(gx.layer_identity(...head(c)) === c.identity, `layer_identity ${c.name}`);
+  }
+  for (const c of v.addresses) {
+    if (c.address !== undefined) {
+      check(gx.section_address_v2(...head(c), c.key) === c.address, `section_address_v2 ${c.name} ${c.key}`);
+    } else {
+      check(code(() => gx.section_address_v2(...head(c), c.key)) === c.code, `section_address_v2 ${c.name} code`);
+    }
+  }
+  const lists = json("input-list/valid/index.json");
+  for (const [file, entries] of Object.entries(lists)) {
+    const b = bin(`input-list/valid/${file}`);
+    check(gx.input_list_validate(b) === entries.length, `input_list_validate ${file}`);
+  }
+  const bad = json("input-list/invalid/index.json");
+  for (const [file, want] of Object.entries(bad)) {
+    const b = bin(`input-list/invalid/${file}`);
+    check(code(() => gx.input_list_validate(b)) === want, `input_list_validate ${file}`);
+  }
+  const inputs = json("input-list/inputs.json");
+  for (const c of inputs.valid) {
+    check(gx.inputs_sha256(hex(c.bytes)) === c.inputs_sha256, `inputs_sha256 ${c.name}`);
+  }
+  for (const c of inputs.invalid) {
+    check(code(() => gx.inputs_sha256(hex(c.bytes))) === c.code, `inputs_sha256 ${c.name}`);
+  }
+}
 
 for (const c of json("timescale/cases.json").cases) {
   const tdb = gx.utc_ms_to_tdb_seconds(BigInt(c.utc_ms));
