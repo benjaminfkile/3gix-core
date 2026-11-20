@@ -82,8 +82,8 @@ fn scenario_1() -> FrameSystem {
 
 /// Integrates scenario 1 for one Julian century with `steps_per_orbit`
 /// fixed steps per orbit and returns the fitted rate of the periapsis
-/// longitude in arcseconds per century. At every periapsis passage (the
-/// radial velocity turning from negative to positive) the longitude of the
+/// angle in arcseconds per century. At every periapsis passage (the
+/// radial velocity turning from negative to positive) the in-plane angle of the
 /// eccentricity vector is recorded; sampling at the same orbital phase every
 /// time removes the periodic part of the osculating elements.
 fn periapsis_rate(scheme: Scheme, steps_per_orbit: f64) -> f64 {
@@ -246,9 +246,9 @@ fn scenario_3_spin_axis_precession() {
             step(&mut s, Seconds::new(dt), Scheme::default());
         }
         let axis = s.root_orientation(3).rotate(Vec3::new(0.0, 0.0, 1.0));
-        let longitude = unwrap(last, axis.y.atan2(axis.x));
-        last = longitude;
-        points.push((s.time().value(), longitude));
+        let angle = unwrap(last, axis.y.atan2(axis.x));
+        last = angle;
+        points.push((s.time().value(), angle));
     }
     let rate = slope(&points) * YEAR / ARCSEC;
     assert!(rate < 0.0, "the axis precesses against the orbit: {rate}");

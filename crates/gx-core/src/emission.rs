@@ -34,7 +34,7 @@
 //! along `+x, -x, +y, -y, +z, -z`, one through every column of samples,
 //! each standing for a solid angle of `4 pi / 6` and a cross section of
 //! `s^2`, so `P_band = (2 pi / 3) s^2 sum over rays of I_band`. This is
-//! exact for an optically thin cloud (`4 pi j V`) and, averaged over
+//! exact for an optically thin volume (`4 pi j V`) and, averaged over
 //! orientations, for an opaque body of any convex shape (Cauchy's
 //! projection formula: the six axis projections of a convex body sum on
 //! average to 1.5 times its surface, so `(2 pi / 3)` times the projected

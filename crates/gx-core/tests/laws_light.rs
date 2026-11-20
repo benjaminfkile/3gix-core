@@ -1,5 +1,5 @@
-//! Tests for light time (`space-model.md` section 6.4): a frame at rest one
-//! astronomical unit away, and a frame in a circular orbit drawn at its
+//! Tests for light time (`space-model.md` section 6.4): a frame at rest
+//! 1.496e11 m away, and a frame in a circular orbit drawn at its
 //! retarded position, with the tolerances the task sets.
 
 use gx_core::frames::FrameSystem;
@@ -10,8 +10,8 @@ use gx_core::light::{retarded_emitter, retarded_state, retarded_time};
 use gx_core::registry::{Frame, FrameTree, Registry, ROOT_PARENT};
 use gx_core::units::{Kilograms, Meters, Quat, Seconds, Vec3};
 
-/// The astronomical unit, meters (IAU 2012, exact).
-const AU: f64 = 149_597_870_700.0;
+/// The test distance, meters.
+const D: f64 = 149_597_870_700.0;
 
 fn frame(id: u64, parent: u64, mass: f64, position: Vec3, velocity: Vec3) -> Frame {
     Frame {
@@ -51,7 +51,7 @@ fn a_frame_at_rest_one_unit_away() {
             epoch,
             vec![
                 frame(1, ROOT_PARENT, 0.0, Vec3::zero(), Vec3::zero()),
-                frame(2, 1, 0.0, Vec3::new(AU, 0.0, 0.0), Vec3::zero()),
+                frame(2, 1, 0.0, Vec3::new(D, 0.0, 0.0), Vec3::zero()),
             ],
             3600.0,
             600.0,
@@ -60,18 +60,18 @@ fn a_frame_at_rest_one_unit_away() {
         let l = retarded_time(Vec3::zero(), Seconds::new(t), &h, 2);
         assert!(!l.clamped);
         let delay = t - l.time.value();
-        // AU / c = 499.004784 s, which the task rounds to 499.005 s.
-        assert!((delay - AU / C).abs() < 1e-6, "delay {delay} s");
+        // D / c = 499.004784 s, which the task rounds to 499.005 s.
+        assert!((delay - D / C).abs() < 1e-6, "delay {delay} s");
         assert!((delay - 499.005).abs() < 1e-3);
         let r = retarded_state(Vec3::zero(), Seconds::new(t), &h, 2);
-        assert_eq!(r.state.position, Vec3::new(AU, 0.0, 0.0));
+        assert_eq!(r.state.position, Vec3::new(D, 0.0, 0.0));
     }
 }
 
 #[test]
 fn a_frame_in_circular_orbit_is_drawn_where_it_was() {
     let mass = 1.989e30;
-    let r = AU;
+    let r = D;
     let mu = G * mass;
     let speed = (mu / r).sqrt();
     let omega = speed / r;

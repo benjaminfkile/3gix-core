@@ -39,14 +39,14 @@
 //!
 //! The figure terms of the DE equations (oblateness acting on the
 //! translational motion) are [`oblateness_accelerations`]; the remaining DE
-//! terms (asteroid belt, tides, the lunar libration coupling) are out of
+//! terms (small-body perturbations, tides, libration coupling) are out of
 //! scope.
 //!
 //! # Oblateness
 //!
 //! A massive frame with `j2 > 0` and reference radius `R` has the potential
 //! `-mu / r * (1 - j2 (R / r)^2 P2(sin phi))`, `P2(s) = (3 s^2 - 1) / 2`,
-//! with `phi` the latitude above the plane normal to its z axis (its
+//! with `phi` the angle between `r` and the plane normal to its z axis (its
 //! symmetry axis, taken from its current orientation). The extra
 //! acceleration of a point at `r` from its origin is
 //!
