@@ -5,7 +5,7 @@
 //! the simulation time of section 6. In the words of section 5:
 //!
 //! > **Reference frames with a floating origin.** One coordinate system
-//! > cannot hold an outer orbit and a one-meter rock in the same double.
+//! > cannot hold an outer orbit and a one-meter body in the same double.
 //! > Every frame has a parent frame and a state vector relative to it. Matter
 //! > cells are addressed in their frame. The camera is positioned relative to
 //! > the frame it is nearest, and re-parents when it leaves one frame's region

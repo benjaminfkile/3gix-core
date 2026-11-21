@@ -143,7 +143,7 @@ fn children() -> [Frame; 4] {
     ]
 }
 
-/// A satellite of frame 30.
+/// A frame orbiting frame 30.
 fn grandchild() -> Frame {
     let f = frame(
         31,

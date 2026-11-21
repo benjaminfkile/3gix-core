@@ -1,4 +1,4 @@
-//! Overlay tiles: the material of part of a frame's ground.
+//! Overlay tiles: the material of part of a frame's surface.
 //!
 //! Implements `matter-format.md` section 12 (overlay tiles) and the
 //! compositing formula of `rendering.md` section 7 item 6, which every
