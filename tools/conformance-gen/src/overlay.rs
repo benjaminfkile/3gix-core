@@ -261,9 +261,9 @@ fn module_files() -> Vec<File> {
         ("01-registry", "registry"),
         ("02-frame", "frame-7"),
         ("03-cell", "7-1-0-1-0"),
-        ("04-equator", "s-7-0-0-0-0"),
+        ("04-xy-plane", "s-7-0-0-0-0"),
         ("05-band-edge", "s-7-0-2-1-2"),
-        ("06-pole", "s-7-4-1-0-1"),
+        ("06-z-axis", "s-7-4-1-0-1"),
         ("07-other-frame", "s-8-0-0-0-0"),
     ] {
         let req = ModuleRequest {

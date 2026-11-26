@@ -442,8 +442,8 @@ pub mod codes {
         /// The header's frame, face, level, or tile coordinates differ from
         /// the key.
         SURFACE_KEY_MISMATCH = 984;
-        /// A reference radius is not finite and positive, or the polar radius
-        /// exceeds the equatorial one by more than a factor of two either way.
+        /// A reference radius is not finite and positive, or `radius_z`
+        /// differs from `radius_xy` by more than a factor of two either way.
         SURFACE_RADIUS = 985;
         /// An EMPTY tile has radii, a block length, ZSTD, or bytes after the
         /// header.
