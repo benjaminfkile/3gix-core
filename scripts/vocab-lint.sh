@@ -18,6 +18,8 @@
 # repository root (scripts/ci.sh uses it to test the lint itself); the
 # directory must be a git work tree with the two list files under scripts/.
 set -eu
+# Byte-wise matching: binary vectors must not trip a locale's multibyte rules.
+export LC_ALL=C
 
 if [ $# -gt 0 ]; then
     cd "$1"
@@ -40,13 +42,16 @@ git ls-files --cached --others --exclude-standard -- . ':!Cargo.lock' ':!**/Carg
 grep -v '^[[:space:]]*$' "$numbers" > "$tmp/numbers"
 
 # A comment line: optional space, then //, //!, ///, #, /*, *, or <!--.
+# awk reads it from the environment, not -v, so its backslashes stay as
+# written (-v would turn \* into *, which macOS awk rejects).
 comment='^[[:space:]]*(//[/!]?|#|/\*+|\*+|<!--)'
 
 # Files whose first comment block carries the marker. The block is the run
 # of comment lines at the top of the file (a #! line counts as one).
 : > "$tmp/exempt"
 while IFS= read -r f; do
-    if awk -v c="$comment" -v m="$marker" '
+    if C="$comment" M="$marker" awk '
+        BEGIN { c = ENVIRON["C"]; m = ENVIRON["M"] }
         $0 !~ c { exit }
         { t = $0; sub(c "[[:space:]]*", "", t); if (index(t, m) == 1) { found = 1; exit } }
         END { exit found ? 0 : 1 }' "$f"; then
@@ -66,8 +71,8 @@ tr '\n' '\0' < "$tmp/checked" | xargs -0 -r grep -I -n -i -w -E -H -- "$pattern"
 tr '\n' '\0' < "$tmp/checked" | xargs -0 -r grep -I -n -F -w -H -f "$tmp/numbers" >> "$tmp/found" || true
 
 # A marker line anywhere but the first comment block of an exempt file.
-tr '\n' '\0' < "$tmp/files" | xargs -0 -r awk -v c="$comment" -v m="$marker" -v ex="$tmp/exempt" '
-    BEGIN { while ((getline l < ex) > 0) exempt[l] = 1 }
+tr '\n' '\0' < "$tmp/files" | C="$comment" M="$marker" EX="$tmp/exempt" xargs -0 -r awk '
+    BEGIN { c = ENVIRON["C"]; m = ENVIRON["M"]; ex = ENVIRON["EX"]; while ((getline l < ex) > 0) exempt[l] = 1 }
     FNR == 1 { top = 1 }
     {
         t = $0
