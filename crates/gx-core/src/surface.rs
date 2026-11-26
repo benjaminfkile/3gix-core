@@ -14,8 +14,8 @@
 //! `s = 2 g / (TILE_QUADS 2^l) - 1` with `g = x TILE_QUADS + i` (and the same
 //! for `t`, `y`, `j`), exact in `f64` ([`face_coord`]). The direction is
 //! `n + s u + t v` normalized; the reference point is where that direction
-//! meets the ellipsoid of equatorial radius `a` (frame x and y) and polar
-//! radius `c` (frame z); the vertex is that point moved `h` along the
+//! meets the ellipsoid of radius `a` in frame x and y (`radius_xy`) and
+//! radius `c` along frame z (`radius_z`); the vertex is that point moved `h` along the
 //! ellipsoid's outward normal there ([`vertex_position`]). Only `+`, `-`,
 //! `*`, `/`, and `sqrt` are used, so every machine computes the same bits,
 //! and a vertex shared by two tiles (or by a tile and its parent) has the
@@ -68,10 +68,10 @@ pub const BLOCK_LEN: usize = 4 * HEIGHT_SIDE * HEIGHT_SIDE
 pub struct SurfaceTile {
     /// The tile.
     pub key: SurfaceKey,
-    /// Equatorial radius of the reference ellipsoid, meters.
-    pub radius_equatorial: f64,
-    /// Polar radius of the reference ellipsoid, meters.
-    pub radius_polar: f64,
+    /// Radius of the reference ellipsoid in the frame's x and y axes, meters.
+    pub radius_xy: f64,
+    /// Radius of the reference ellipsoid along the frame's z axis, meters.
+    pub radius_z: f64,
     /// The lowest height, meters, of the frame's whole surface: no height
     /// of any tile of the frame, at any level, is below it (section 10.2).
     /// A renderer may treat the reference shape lowered by it as opaque.
@@ -147,8 +147,8 @@ pub fn vertex_direction(key: &SurfaceKey, i: i64, j: i64) -> [f64; 3] {
     p.map(|x| x / len)
 }
 
-/// Where the unit direction `d` meets the ellipsoid of radii `a`
-/// (equatorial) and `c` (polar), and the ellipsoid's outward unit normal
+/// Where the unit direction `d` meets the ellipsoid of radius `a` in frame
+/// x and y and `c` along frame z, and the ellipsoid's outward unit normal
 /// there.
 pub fn ellipsoid_point(d: [f64; 3], a: f64, c: f64) -> ([f64; 3], [f64; 3]) {
     let q = (d[0] * d[0] + d[1] * d[1]) / (a * a) + d[2] * d[2] / (c * c);
@@ -239,8 +239,8 @@ pub fn encode(tile: &SurfaceTile, compression: Compression) -> Vec<u8> {
     let mut out = header(
         &tile.key,
         flags,
-        tile.radius_equatorial,
-        tile.radius_polar,
+        tile.radius_xy,
+        tile.radius_z,
         tile.height_floor,
         BLOCK_LEN as u64,
     );
@@ -387,8 +387,8 @@ pub fn decode(key: &SurfaceKey, bytes: &[u8]) -> Result<Tile, ValidationError> {
     }
     Ok(Tile::Surface(SurfaceTile {
         key: *key,
-        radius_equatorial: a,
-        radius_polar: c,
+        radius_xy: a,
+        radius_z: c,
         height_floor: floor,
         heights,
         parent_heights,
@@ -406,8 +406,8 @@ mod tests {
     fn tile(key: SurfaceKey) -> SurfaceTile {
         SurfaceTile {
             key,
-            radius_equatorial: 6_378_137.0,
-            radius_polar: 6_356_752.3,
+            radius_xy: 6_378_137.0,
+            radius_z: 6_356_752.3,
             height_floor: -10.0,
             heights: (0..HEIGHT_SIDE * HEIGHT_SIDE)
                 .map(|i| (i % 97) as f32)
@@ -452,6 +452,30 @@ mod tests {
     }
 
     #[test]
+    fn renamed_radii_keep_the_committed_bytes() {
+        // The committed empty tile vector is what `encode_empty` gives.
+        let key = SurfaceKey::new(7, 2, 3, 5, 6).unwrap();
+        assert_eq!(
+            encode_empty(&key),
+            include_bytes!("../../../conformance/overlay/layer/surface-tile.bin")
+        );
+        // A full tile set through `radius_xy` and `radius_z` gives the bytes
+        // the same tile gave before the rename: their FNV-1a 64 hash and
+        // length, taken from the encoder as it was then.
+        let key = SurfaceKey::new(4, 0, 2, 1, 3).unwrap();
+        let t = tile(key);
+        let bytes = encode(&t, Compression::None);
+        assert_eq!(le_f64(&bytes, 32), t.radius_xy);
+        assert_eq!(le_f64(&bytes, 40), t.radius_z);
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for &b in &bytes {
+            h ^= u64::from(b);
+            h = h.wrapping_mul(0x0100_0000_01b3);
+        }
+        assert_eq!((h, bytes.len()), (0x2ec0_40c7_fc78_7b97, 56_720));
+    }
+
+    #[test]
     fn invalid_values_are_rejected() {
         let key = SurfaceKey::new(4, 5, 1, 0, 1).unwrap();
         let mut t = tile(key);
@@ -463,7 +487,7 @@ mod tests {
             codes::SURFACE_VALUE
         );
         let mut t = tile(key);
-        t.radius_polar = 0.0;
+        t.radius_z = 0.0;
         assert_eq!(
             decode(&key, &encode(&t, Compression::None))
                 .unwrap_err()

@@ -256,7 +256,7 @@ mod tests {
 
     #[test]
     fn torque_on_symmetric_frame() {
-        // A mass off the equator of a frame symmetric about z: the torque
+        // A mass off the xy plane of a frame symmetric about z: the torque
         // is the closed form 3 G m (C - A)(r . z)(r x z) / r^5.
         let m = Vec3::new(4.0e37, 4.0e37, 4.1e37);
         let r = Vec3::new(3.0e8, 0.0, 4.0e8);

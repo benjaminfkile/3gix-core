@@ -384,17 +384,17 @@ mod tests {
         let mut oblate = body(Vec3::zero(), Vec3::zero(), m);
         oblate.j2 = 1.0e-3;
         oblate.reference_radius = 6.4e6;
-        // In the equatorial plane the extra pull is inward and equals
-        // 3/2 j2 mu R^2 / r^4; on the axis it is outward with twice that.
+        // In the xy plane the extra pull is inward and equals
+        // 3/2 j2 mu R^2 / r^4; on the z axis it is outward with twice that.
         let r = 7.0e6;
         let k = 1.5 * 1.0e-3 * G * m * 6.4e6 * 6.4e6 / (r * r * r * r);
-        let equator =
+        let in_xy =
             oblateness_accelerations(&[oblate, body(Vec3::new(r, 0.0, 0.0), Vec3::zero(), 0.0)]);
-        assert!((equator[1] - Vec3::new(-k, 0.0, 0.0)).length() < 1e-12 * k);
-        assert_eq!(equator[0], Vec3::zero());
-        let pole =
+        assert!((in_xy[1] - Vec3::new(-k, 0.0, 0.0)).length() < 1e-12 * k);
+        assert_eq!(in_xy[0], Vec3::zero());
+        let on_z =
             oblateness_accelerations(&[oblate, body(Vec3::new(0.0, 0.0, r), Vec3::zero(), 0.0)]);
-        assert!((pole[1] - Vec3::new(0.0, 0.0, 2.0 * k)).length() < 1e-12 * k);
+        assert!((on_z[1] - Vec3::new(0.0, 0.0, 2.0 * k)).length() < 1e-12 * k);
         // A massive frame off the axis: total momentum change is zero.
         let other = body(Vec3::new(3.0e7, -1.0e7, 2.0e7), Vec3::zero(), 7.0e22);
         let a = oblateness_accelerations(&[oblate, other]);

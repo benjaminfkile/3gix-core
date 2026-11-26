@@ -7,7 +7,7 @@
 //! - For a surface key of frame [`OVERLAY_FRAME_ID`] (the frame the example
 //!   frame module declares) it returns an overlay tile whose coverage,
 //!   albedo, and roughness are a fixed pattern of the vertex direction
-//!   ([`material`]): full coverage in a band about the equator, partial at
+//!   ([`material`]): full coverage in a band about the frame's xy plane, partial at
 //!   its edges, none elsewhere. For a surface key of any other frame it
 //!   returns the empty overlay tile.
 //! - For a cell key it returns the empty section of the cell under a root
@@ -149,18 +149,18 @@ mod tests {
     }
 
     #[test]
-    fn band_about_the_equator() {
+    fn band_about_the_xy_plane() {
         let key = SurfaceKey::new(7, 0, 0, 0, 0).unwrap();
         let Overlay::Tile(t) = overlay::decode(&key, &compile("s-7-0-0-0-0")).unwrap() else {
             panic!("frame 7 has an overlay");
         };
-        // The face center is on the equator; the face corner is far from it.
+        // The face center is in the xy plane; the face corner is far from it.
         assert_eq!(t.coverage[32 + 65 * 32], 255);
         assert_eq!(t.coverage[0], 0);
         assert!(t.coverage.iter().any(|&c| c > 0 && c < 255));
         assert_eq!(t.parent_coverage[16 + 33 * 16], 255);
-        let pole = SurfaceKey::new(7, 4, 0, 0, 0).unwrap();
-        let Overlay::Tile(p) = overlay::decode(&pole, &compile("s-7-4-0-0-0")).unwrap() else {
+        let z_axis = SurfaceKey::new(7, 4, 0, 0, 0).unwrap();
+        let Overlay::Tile(p) = overlay::decode(&z_axis, &compile("s-7-4-0-0-0")).unwrap() else {
             panic!("frame 7 has an overlay");
         };
         assert!(p.coverage.iter().all(|&c| c == 0));
