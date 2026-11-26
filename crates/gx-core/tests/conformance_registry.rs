@@ -161,7 +161,7 @@ const BYTE_CODES: &[u16] = &[
     codes::REGISTRY_RESERVED_U32_NONZERO,
     codes::REGISTRY_EPOCH_NOT_FINITE,
     codes::REGISTRY_LENGTH_MISMATCH,
-    codes::REGISTRY_EMPTY_EPOCH_NONZERO,
+    codes::REGISTRY_EPOCH_NONZERO,
     codes::REGISTRY_VERSION_RETIRED,
     codes::FRAME_RESERVED_NONZERO,
     codes::FRAME_NOT_SORTED,
@@ -268,7 +268,6 @@ fn union_cases_match() {
     }
     assert!(ok_cases >= 1);
     let want: BTreeSet<u16> = [
-        codes::UNION_EPOCH_MISMATCH,
         codes::UNION_DUPLICATE_ID,
         codes::UNION_NO_ROOT,
         codes::UNION_MULTIPLE_ROOTS,

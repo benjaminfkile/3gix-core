@@ -1,7 +1,6 @@
 //! Regenerates the matter section, frame registry, hub container, section
 //! address, source manifest, epoch index, frame record, module request and tile, example
-//! module, time
-//! scale, integrator, and light-time conformance vectors.
+//! module, integrator, and light-time conformance vectors.
 //!
 //! Usage: `conformance-gen OUT_DIR`. Writes `OUT_DIR/matter/valid/`,
 //! `OUT_DIR/matter/invalid/`, `OUT_DIR/registry/` (see the [`registry`]
@@ -12,8 +11,7 @@
 //! `OUT_DIR/overlay/` and `OUT_DIR/module-overlay/` ([`overlay`]),
 //! `OUT_DIR/module-io/` ([`module_io`]), `OUT_DIR/module/` ([`module`]),
 //! `OUT_DIR/module-v2/` and `OUT_DIR/module-frame/` ([`module_v2`]),
-//! `OUT_DIR/timescale/`
-//! ([`timescale`]), `OUT_DIR/integrate/` ([`integrate`]), and
+//! `OUT_DIR/integrate/` ([`integrate`]), and
 //! `OUT_DIR/light/` ([`light`]), the files
 //! checked in under the same names in
 //! `conformance/` (`matter-format.md` section 8, `client-compute.md`
@@ -63,7 +61,6 @@ mod module_io;
 mod module_v2;
 mod overlay;
 mod registry;
-mod timescale;
 
 /// SplitMix64: a small, fixed, portable pseudo-random sequence.
 struct SplitMix64(u64);
@@ -944,7 +941,6 @@ fn generate() -> Vec<File> {
     files.extend(module_io::files());
     files.extend(module::files());
     files.extend(module_v2::files());
-    files.extend(timescale::files());
     files.extend(integrate::files());
     files.extend(light::files());
     files.sort_by(|a, b| a.0.cmp(&b.0));

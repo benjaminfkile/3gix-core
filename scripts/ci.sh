@@ -44,7 +44,6 @@ diff -r target/conformance-check/manifest conformance/manifest
 diff -r target/conformance-check/epochs conformance/epochs
 diff -r target/conformance-check/frame-record conformance/frame-record
 diff -r target/conformance-check/module-io conformance/module-io
-diff -r target/conformance-check/timescale conformance/timescale
 diff -r target/conformance-check/integrate conformance/integrate
 diff -r target/conformance-check/light conformance/light
 diff -r target/conformance-check/module conformance/module
@@ -64,7 +63,7 @@ for f in format_version validate validate_layer decode_chunk_mass section_addres
     epochs_validate epochs_manifest \
     layer_identity section_address_v2 frames_slot_value inputs_sha256 \
     input_span_index input_list_validate \
-    utc_ms_to_tdb_seconds tdb_seconds_to_utc_ms integrate_registry \
+    universe_seconds wall_ms integrate_registry \
     light_retarded_state; do
     grep -q "export function $f(" target/wasm-pkg/gx_core.d.ts || {
         echo "missing wasm export: $f" >&2

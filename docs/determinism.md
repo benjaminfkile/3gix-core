@@ -22,15 +22,15 @@ The hub's promise is that one fingerprint means one byte sequence. Every functio
 - A section address is SHA-256 over a fixed little-endian preimage (`client-compute.md` section 3), and is written as lowercase hex. The chunk key in it is the canonical text form, which parsing and printing round trip exactly.
 - Manifests, epoch indexes, request bytes, tile bytes, and source id lists are fixed little-endian layouts. Epoch index entries are always in epoch order (`EpochIndex::new` sorts, `decode` rejects unsorted input), and the epoch rule divides in `u128`, so it never overflows or rounds differently. Manifest entries are always in id order (`Manifest::new` sorts, `decode` rejects unsorted input), and tiles and source ids must ascend, so there is one byte form per value.
 
-## Time scale conversion
+## Universe time
 
-`timescale::utc_ms_to_tdb_seconds` and `tdb_seconds_to_utc_ms` produce no hub bytes, but they feed every computation (a registry's epoch is the origin converted to TDB), so they are held to the same rule:
+`clock::universe_seconds` and `clock::wall_ms` produce no hub bytes, but they feed every computation (universe time is seconds since the origin, and every registry's epoch is 0, the origin), so they are held to the same rule:
 
-- UTC to TAI is integer arithmetic on milliseconds with the built-in leap second table, converted to `f64` once.
-- The periodic TDB term uses `detmath::sin`, never the platform `sin`.
-- The inverse iterates a fixed-point step until `tt` repeats bitwise, at most 8 times, and rounds to the nearest millisecond with `f64::round`.
+- `universe_seconds` subtracts the origin from the wall-clock milliseconds in `i64` (panicking on overflow) and divides by 1000 once in `f64`.
+- `wall_ms` multiplies by 1000 once, rounds with `f64::round`, and adds the origin in `i64`, saturating at the `i64` range.
+- The round trip is exact for every whole millisecond within `2^51` ms of the origin.
 
-`scripts/wasm-node-check.mjs` runs the WebAssembly build under Node against `conformance/timescale/` and `conformance/address/` and requires the same bit patterns and addresses as the native tests.
+`scripts/wasm-node-check.mjs` runs the WebAssembly build under Node against the bit patterns of `clock`'s tests and against `conformance/address/`, and requires the same bit patterns and addresses as the native tests.
 
 ## zstd is part of the format
 
@@ -45,12 +45,12 @@ Decoding is not affected: any conforming zstd decoder reads any conforming frame
 
 ## The proof
 
-`tools/conformance-gen` regenerates `conformance/matter/`, `conformance/registry/`, `conformance/container/`, `conformance/address/`, `conformance/manifest/`, `conformance/epochs/`, `conformance/module-io/`, `conformance/timescale/`, and `conformance/integrate/` from code with fixed values and a fixed-seed generator written in the tool. Two checks run it:
+`tools/conformance-gen` regenerates `conformance/matter/`, `conformance/registry/`, `conformance/container/`, `conformance/address/`, `conformance/manifest/`, `conformance/epochs/`, `conformance/module-io/`, and `conformance/integrate/` from code with fixed values and a fixed-seed generator written in the tool. Two checks run it:
 
 - `cargo test -p conformance-gen` runs the generator into a scratch directory and compares every file to the checked-in copy byte for byte.
 - `scripts/ci.sh` runs it into `target/conformance-check` and fails on any `diff -r` difference against those directories.
 
-To refresh the vectors after an intended change: `rm -rf conformance/matter conformance/registry conformance/container conformance/address conformance/manifest conformance/epochs conformance/module-io conformance/timescale conformance/integrate && cargo run -p conformance-gen -- conformance`.
+To refresh the vectors after an intended change: `rm -rf conformance/matter conformance/registry conformance/container conformance/address conformance/manifest conformance/epochs conformance/module-io conformance/integrate && cargo run -p conformance-gen -- conformance`.
 
 ## How the laws keep the promise
 
@@ -62,4 +62,4 @@ The laws (`frames`, `gravity`, `rotation`, `integrate`, `history`, `light`, `rad
 - `conformance/integrate/` pins the state bytes of a six-frame registry (relativistic terms, oblateness, two rigid frames) after three integrations, and `scripts/wasm-node-check.mjs` checks that the WebAssembly build under Node produces the same bytes.
 - `conformance/light/` pins four light-time solutions, one clamped to the epoch. `scripts/wasm-node-check.mjs` checks them against the WebAssembly build under Node. The light-time iteration stops by a fixed rule that depends only on the values.
 - `advance` splits an interval into `ceil(|interval| / max_step)` equal steps and sets the time to exactly the target at the end.
-- `radiance`, `extinction`, and `lod` need `exp` and `tan`, and `timescale` needs `sin`. These are written out in `detmath` from correctly rounded operations, never taken from the platform math library. `band_radiance` uses a fixed 64-point midpoint rule per band. See `laws.md`.
+- `radiance`, `extinction`, and `lod` need `exp` and `tan`, and `rotation` needs `sin` and `cos`. These are written out in `detmath` from correctly rounded operations, never taken from the platform math library. `band_radiance` uses a fixed 64-point midpoint rule per band. See `laws.md`.

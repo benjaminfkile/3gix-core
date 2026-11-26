@@ -70,8 +70,8 @@
 //! - [`overlay`]: overlay tiles, encode, decode, validate, and the
 //!   compositing formula every renderer build shares (`matter-format.md`
 //!   section 12, `rendering.md` section 7 item 6).
-//! - [`timescale`]: UTC milliseconds to seconds of Barycentric Dynamical Time
-//!   since J2000 and back (`space-model.md` section 7 item 5).
+//! - [`clock`]: universe time, seconds since the origin, from and to the
+//!   hub's wall-clock milliseconds (`space-model.md` section 7 item 5).
 //! - The C ABI (`matter-format.md` sections 7 and 11.4, `client-compute.md`
 //!   sections 3, 5.1, and 5.4, `matter-format.md` section 12.5):
 //!   [`gx_format_version`], [`gx_validate`], [`gx_validate_layer`],
@@ -88,7 +88,7 @@
 //!   `epochs_validate`, `epochs_manifest`,
 //!   `layer_identity`, `section_address_v2`, `frames_slot_value`,
 //!   `inputs_sha256`, `input_span_index`, `input_list_validate`,
-//!   `utc_ms_to_tdb_seconds`, `tdb_seconds_to_utc_ms`,
+//!   `universe_seconds`, `wall_ms`,
 //!   `integrate_registry`, and `light_retarded_state`, built with
 //!   `wasm-bindgen`.
 //! - [`detmath`]: deterministic `exp`, `expm1`, `sin`, `cos`, and `tan`,
@@ -103,6 +103,7 @@
 use core::ffi::c_char;
 
 pub mod address;
+pub mod clock;
 pub mod container;
 pub mod detmath;
 pub mod emission;
@@ -126,7 +127,6 @@ pub mod registry;
 pub mod rotation;
 pub mod sha256;
 pub mod surface;
-pub mod timescale;
 pub mod units;
 pub mod validate;
 
@@ -1197,22 +1197,27 @@ mod wasm {
             .map_err(js)
     }
 
-    /// Seconds of Barycentric Dynamical Time since J2000 at a UTC instant in
-    /// Unix-style milliseconds.
+    /// Universe time, seconds since the origin, at wall-clock instant
+    /// `wall_ms` for a universe whose origin is `origin_ms`
+    /// ([`crate::clock::universe_seconds`]). Throws an `Error` with code 0
+    /// when `wall_ms - origin_ms` overflows `i64`.
     #[wasm_bindgen]
-    pub fn utc_ms_to_tdb_seconds(utc_ms: i64) -> f64 {
-        crate::timescale::utc_ms_to_tdb_seconds(utc_ms)
+    pub fn universe_seconds(wall_ms: i64, origin_ms: i64) -> Result<f64, JsError> {
+        if wall_ms.checked_sub(origin_ms).is_none() {
+            return Err(JsError::new("0: wall_ms - origin_ms overflows i64"));
+        }
+        Ok(crate::clock::universe_seconds(wall_ms, origin_ms).value())
     }
 
-    /// The UTC instant in Unix-style milliseconds of a TDB time in seconds
-    /// since J2000.
+    /// The wall-clock instant in milliseconds of universe time `t` seconds
+    /// for a universe whose origin is `origin_ms` ([`crate::clock::wall_ms`]).
     #[wasm_bindgen]
-    pub fn tdb_seconds_to_utc_ms(tdb: f64) -> i64 {
-        crate::timescale::tdb_seconds_to_utc_ms(tdb)
+    pub fn wall_ms(t: f64, origin_ms: i64) -> i64 {
+        crate::clock::wall_ms(crate::units::Seconds::new(t), origin_ms)
     }
 
     /// Integrates a frame registry (format version 2) from its epoch to
-    /// `to_seconds` (TDB seconds since J2000) in equal steps no longer than
+    /// `to_seconds` (seconds since the origin) in equal steps no longer than
     /// `max_step_seconds` with the default scheme, and returns
     /// `FrameSystem::state_bytes` of the result. Throws an `Error` with
     /// message `CODE: REASON` for an invalid registry, and with code 0 for a
@@ -1241,8 +1246,8 @@ mod wasm {
     }
 
     /// Solves the light-time equation for frame `frame_id` seen from
-    /// `observer` (three numbers, root coordinates) at `t` (TDB seconds
-    /// since J2000), against a history of the frame system built from
+    /// `observer` (three numbers, root coordinates) at `t` (seconds since
+    /// the origin), against a history of the frame system built from
     /// `registry` (format version 2) with checkpoints every `interval`
     /// seconds, steps no longer than `max_step`, the default scheme, and a
     /// capacity of 64, extended to `t` first. Returns
@@ -1308,7 +1313,8 @@ mod wasm {
 pub use wasm::{
     decode_chunk_mass, epochs_manifest, epochs_validate, format_version, frames_slot_value,
     input_list_validate, input_span_index, inputs_sha256, integrate_registry, layer_identity,
-    light_retarded_state, manifest_validate, section_address, section_address_v2, validate_layer,
+    light_retarded_state, manifest_validate, section_address, section_address_v2, universe_seconds,
+    validate_layer, wall_ms,
 };
 
 #[cfg(test)]

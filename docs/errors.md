@@ -39,10 +39,10 @@ Step 1 checks the version after the magic: a `format_version` of 1 or 2 fails wi
 
 `registry::decode` and `registry::validate` check one registry in this order and stop at the first failing rule:
 
-1. Length at least 24 (601), magic (602), version (610 for the retired version 1, 603 for any version other than 2), reserved `u16` at offset 6 (604), reserved `u32` at offset 20 (605), finite epoch (606), length exactly `24 + 184 * frame_count` (607), epoch 0 when `frame_count` is 0 (609).
+1. Length at least 24 (601), magic (602), version (610 for the retired version 1, 603 for any version other than 2), reserved `u16` at offset 6 (604), reserved `u32` at offset 20 (605), finite epoch (606), length exactly `24 + 184 * frame_count` (607), epoch 0, the origin (609).
 2. Then record by record in file order. For each record: its `frame_id` against the previous record's (612 if lower, 613 if equal), the reserved bytes (611), then the field rules in table order, 614 to 633.
 
-`Registry::new` runs the same rules on frames it has sorted by id: epoch (606), the frame count (608), the empty registry's epoch (609), then for each frame in id order a repeated id (613) and the field rules 614 to 633. `Registry::empty()` is the empty registry with epoch 0 and cannot fail.
+`Registry::new` runs the same rules on frames it has sorted by id: epoch (606), the frame count (608), epoch 0 (609), then for each frame in id order a repeated id (613) and the field rules 614 to 633. `Registry::empty()` is the empty registry with epoch 0 and cannot fail.
 
 The oblateness and moment rules (626 to 633) run after the root rules, in this order: `j2` finite (626) and not negative (627); `reference_radius` finite (628), greater than 0 when `j2` is above 0 (629), and 0 when `j2` is 0 (630); `principal_moments` finite (631), all 0 or all greater than 0 (632), and each no greater than the sum of the other two (633). Equality in the last rule is allowed.
 
@@ -61,9 +61,9 @@ A container with `section_count` 0 and no data is valid and holds no sections. L
 
 `validate(key, bytes)` and `gx_validate` parse the key first (206). The key `registry` selects the registry rules; any cell key selects the matter rules. Through the C ABI, null pointer checks come first: `key` (207), then the key's UTF-8 (206), then `bytes` (106).
 
-`FrameTree::from_registries` checks the union in this order: epochs of the registries that declare frames (651), ids unique across registries (652), the number of roots (653, 654), every parent present (655), no cycle (656).
+`FrameTree::from_registries` checks the union in this order: ids unique across registries (652), the number of roots (653, 654), every parent present (655), no cycle (656).
 
-Negative zero counts as zero for the root position and velocity rules, for `j2`, `reference_radius`, and `principal_moments`, and for the empty registry's epoch (609). Epochs in the union are compared by bit pattern, so `0.0` and `-0.0` differ.
+Negative zero counts as zero for the root position and velocity rules, for `j2`, `reference_radius`, and `principal_moments`, and for the epoch (609). Every registry's epoch is 0, so the union does not compare epochs.
 
 ### Source manifest
 
@@ -182,7 +182,7 @@ Returned by `registry::decode`, `registry::validate`, and `Registry::new`.
 | 606 | `epoch` is NaN or infinite. |
 | 607 | The input length is not exactly `24 + 184 * frame_count`. |
 | 608 | More frames than a `u32` counts were given to `Registry::new`. Reachable only through the Rust API. No byte vector. |
-| 609 | A registry with `frame_count` 0 has an `epoch` other than 0 (section 5.3). |
+| 609 | `epoch` is not 0: the epoch must be 0, the origin (section 5). |
 | 610 | `format_version` is 1: registry format version 1, with 144-byte records, is retired (section 9). |
 | 611 | A record's 7 reserved bytes at offset 25 are not all 0. |
 | 612 | A record's `frame_id` is lower than the previous record's. Records must already be ascending; the decoder never sorts. |
@@ -214,7 +214,7 @@ Returned by `FrameTree::from_registries`. These rules span several registries, s
 
 | Code | Rule |
 |---|---|
-| 651 | Two registries that declare frames have different `epoch` values (compared by bit pattern). Empty registries, whose epoch is 0, take no part. |
+| 651 | Retired: two registries that declared frames had different `epoch` values. Every registry's epoch is now 0 (609), so nothing returns this code. |
 | 652 | A `frame_id` is declared by more than one registry. |
 | 653 | The union has no root frame. This includes a union with no frames at all. |
 | 654 | The union has more than one root frame. |
@@ -399,7 +399,7 @@ Declared in `include/gx_core.h` (`matter-format.md` section 7, `client-compute.m
 
 `conformance/matter/invalid/` holds at least one file for every code above that bytes can trigger (every code from 101 to 529 except 106, 200, 206, 207, 208, and 417, which bytes alone cannot trigger). Files are named `CODE-RULE.bin`. `index.json` gives the key every file is validated under and maps each file name to its expected code.
 
-`conformance/registry/invalid/` holds at least one file for every code from 601 to 633 except 608, named `CODE-RULE.bin`, with `index.json` mapping each file name to its expected code. `conformance/registry/union/` holds registries that are each valid alone, and its `index.json` lists cases: which files form the union, in order, and either the expected tree (root, frame count, every path to the root) or the expected code. There is at least one case for every code from 651 to 656.
+`conformance/registry/invalid/` holds at least one file for every code from 601 to 633 except 608, named `CODE-RULE.bin`, with `index.json` mapping each file name to its expected code. `conformance/registry/union/` holds registries that are each valid alone, and its `index.json` lists cases: which files form the union, in order, and either the expected tree (root, frame count, every path to the root) or the expected code. There is at least one case for every code from 652 to 656.
 
 `conformance/container/invalid/` holds one file for every code from 701 to 713, named `CODE-RULE.bin`, plus a container whose table is sound but whose first section fails with 102. `index.json` gives the key every file is decoded under and maps each file name to its code. `conformance/container/valid/` holds a matter chunk and a registry chunk with the expected decode results.
 

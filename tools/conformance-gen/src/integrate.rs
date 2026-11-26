@@ -26,8 +26,8 @@ use serde_json::{json, Value};
 
 use crate::{number, pretty, File};
 
-/// Epoch of the registry: seconds of Barycentric Dynamical Time since J2000.
-const EPOCH: f64 = 8.1e8;
+/// Epoch of the registry: 0, the origin (`matter-format.md` section 5).
+const EPOCH: f64 = 0.0;
 
 fn frame(id: u64, parent: u64, mass: f64, position: [f64; 3], velocity: [f64; 3]) -> Frame {
     let v = |a: [f64; 3]| Vec3::new(a[0], a[1], a[2]);
