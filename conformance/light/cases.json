@@ -3,18 +3,18 @@
     {
       "frame_id": 4,
       "interval_seconds": {
-        "bits": "0x40f5180000000000",
-        "decimal": "8.64e4"
+        "bits": "0x40f2750000000000",
+        "decimal": "7.56e4"
       },
       "max_step_seconds": {
         "bits": "0x40ac200000000000",
         "decimal": "3.6e3"
       },
-      "name": "companion-thirty-days",
+      "name": "companion-thirty-units",
       "observer": [
         {
-          "bits": "0x424176592e000000",
-          "decimal": "1.5e11"
+          "bits": "0x423a4f532a000000",
+          "decimal": "1.13e11"
         },
         {
           "bits": "0x416312d000000000",
@@ -25,23 +25,23 @@
           "decimal": "0e0"
         }
       ],
-      "state_file": "companion-thirty-days.bin",
+      "state_file": "companion-thirty-units.bin",
       "t_seconds": {
-        "bits": "0x4143c68000000000",
-        "decimal": "2.592e6"
+        "bits": "0x41414db000000000",
+        "decimal": "2.268e6"
       }
     },
     {
       "frame_id": 3,
       "interval_seconds": {
-        "bits": "0x40d5180000000000",
-        "decimal": "2.16e4"
+        "bits": "0x40d2750000000000",
+        "decimal": "1.89e4"
       },
       "max_step_seconds": {
         "bits": "0x408c200000000000",
         "decimal": "9e2"
       },
-      "name": "oblate-one-day",
+      "name": "oblate-one-unit",
       "observer": [
         {
           "bits": "0xc2574876e8000000",
@@ -56,10 +56,10 @@
           "decimal": "0e0"
         }
       ],
-      "state_file": "oblate-one-day.bin",
+      "state_file": "oblate-one-unit.bin",
       "t_seconds": {
-        "bits": "0x40f5180000000000",
-        "decimal": "8.64e4"
+        "bits": "0x40f2750000000000",
+        "decimal": "7.56e4"
       }
     },
     {
@@ -96,14 +96,14 @@
     {
       "frame_id": 5,
       "interval_seconds": {
-        "bits": "0x40e5180000000000",
-        "decimal": "4.32e4"
+        "bits": "0x40e2750000000000",
+        "decimal": "3.78e4"
       },
       "max_step_seconds": {
         "bits": "0x409c200000000000",
         "decimal": "1.8e3"
       },
-      "name": "probe-two-days",
+      "name": "probe-two-units",
       "observer": [
         {
           "bits": "0x0000000000000000",
@@ -118,10 +118,10 @@
           "decimal": "0e0"
         }
       ],
-      "state_file": "probe-two-days.bin",
+      "state_file": "probe-two-units.bin",
       "t_seconds": {
-        "bits": "0x4105180000000000",
-        "decimal": "1.728e5"
+        "bits": "0x4102750000000000",
+        "decimal": "1.512e5"
       }
     }
   ],

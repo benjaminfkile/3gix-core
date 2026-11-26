@@ -158,10 +158,10 @@ fn span_cases() -> Value {
         (0u64, 0u64, 0u64),
         (30, 3600, 0),
         (30, 3600, 3600),
-        (30, 3600, 86_400),
-        (23, 3600, 86_400),
-        (24, 3600, 86_400),
-        (1, 86_400, 3600),
+        (30, 3600, 72_000),
+        (19, 3600, 72_000),
+        (20, 3600, 72_000),
+        (1, 72_000, 3600),
         (u64::MAX, u64::MAX, u64::MAX),
         (u64::MAX, 60, 1),
     ]
@@ -222,17 +222,17 @@ pub fn files() -> Vec<File> {
         span_index: 0,
         slots: vec![],
     };
-    // An epoch layer: hourly spans, daily epochs.
+    // An epoch layer: hourly spans, epochs of 72,000 s (20 spans).
     let index = EpochIndex::new(
-        86_400,
+        72_000,
         vec![
             epochs::Entry {
                 epoch: 0,
-                manifest: sha256(b"source manifest day 0"),
+                manifest: sha256(b"source manifest epoch 0"),
             },
             epochs::Entry {
                 epoch: 1,
-                manifest: sha256(b"source manifest day 1"),
+                manifest: sha256(b"source manifest epoch 1"),
             },
         ],
     )
@@ -248,8 +248,8 @@ pub fn files() -> Vec<File> {
         slots: vec![],
     };
     let epoch_30 = epoch_layer("epoch-layer-span-30", 30);
-    let epoch_24 = epoch_layer("epoch-layer-span-24", 24);
-    // A reader with both slot kinds, on the origin, at spans 30 and 24.
+    let epoch_20 = epoch_layer("epoch-layer-span-20", 20);
+    // A reader with both slot kinds, on the origin, at spans 30 and 20.
     let both = |name, span_index, e: &Layer, of| Layer {
         name,
         module: sha256(b"module reader"),
@@ -260,16 +260,16 @@ pub fn files() -> Vec<File> {
         slots: vec![layer(e.identity(), of), frames(fv, "frames-3-5")],
     };
     let both_30 = both("both-span-30", 30, &epoch_30, "epoch-layer-span-30");
-    let both_24 = both("both-span-24", 24, &epoch_24, "epoch-layer-span-24");
-    // A daily layer reading the hourly reader at span 1 reads it at 24.
+    let both_20 = both("both-span-20", 20, &epoch_20, "epoch-layer-span-20");
+    // A 72,000 s layer reading the hourly reader at span 1 reads it at 20.
     let nested = Layer {
-        name: "nested-day-1",
+        name: "nested-span-1",
         module: sha256(b"module nested"),
         manifest: None,
         origin: Some(ORIGIN),
-        span_seconds: 86_400,
+        span_seconds: 72_000,
         span_index: 1,
-        slots: vec![layer(both_24.identity(), "both-span-24")],
+        slots: vec![layer(both_20.identity(), "both-span-20")],
     };
     let one_layer = Layer {
         name: "one-layer-slot",
@@ -296,16 +296,16 @@ pub fn files() -> Vec<File> {
 
     let mut epoch_json = epoch_30.identity_json();
     epoch_json["epoch_index"] = json!(to_hex(&index_bytes));
-    let mut epoch_24_json = epoch_24.identity_json();
-    epoch_24_json["epoch_index"] = json!(to_hex(&index_bytes));
+    let mut epoch_20_json = epoch_20.identity_json();
+    epoch_20_json["epoch_index"] = json!(to_hex(&index_bytes));
     let identities = vec![
         static_layer.identity_json(),
         epoch_json,
-        epoch_24_json,
+        epoch_20_json,
         one_layer.identity_json(),
         one_frames.identity_json(),
         both_30.identity_json(),
-        both_24.identity_json(),
+        both_20.identity_json(),
         nested.identity_json(),
     ];
     let addresses = vec![

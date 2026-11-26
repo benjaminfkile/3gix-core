@@ -57,7 +57,7 @@ fn abi_manifest(bytes: &[u8], span_seconds: u64, span_index: u64) -> (i32, [u8; 
 
 #[test]
 fn valid_vectors_decode_and_match() {
-    for name in ["daily", "empty", "widest"] {
+    for name in ["regular", "empty", "widest"] {
         let bytes = std::fs::read(root().join(format!("valid/{name}.bin"))).expect("bin");
         let want = read_json(&format!("valid/{name}.json"));
         let x = epochs::decode(&bytes).unwrap_or_else(|e| panic!("{name}: {e}"));
@@ -122,8 +122,8 @@ fn valid_vectors_decode_and_match() {
 
 #[test]
 fn every_rule_has_a_case() {
-    let daily = read_json("valid/daily.json");
-    let cases = daily["cases"].as_array().expect("cases");
+    let regular = read_json("valid/regular.json");
+    let cases = regular["cases"].as_array().expect("cases");
     let codes_seen: BTreeSet<u64> = cases.iter().filter_map(|c| c["code"].as_u64()).collect();
     assert!(codes_seen.contains(&u64::from(codes::EPOCHS_SPAN_SECONDS_ZERO)));
     assert!(codes_seen.contains(&u64::from(codes::EPOCHS_SPAN_NOT_DIVISOR)));
@@ -141,7 +141,7 @@ fn every_rule_has_a_case() {
 
 #[test]
 fn null_pointers() {
-    let bytes = std::fs::read(root().join("valid/daily.bin")).expect("bin");
+    let bytes = std::fs::read(root().join("valid/regular.bin")).expect("bin");
     let mut out = [0u8; 32];
     unsafe {
         assert_eq!(

@@ -14,8 +14,8 @@
  * retired version 2 header, and a retired version 1 registry, and checks the return
  * codes, the reason, the buffer truncation, and gx_error_name. Then checks
  * gx_manifest_validate on a valid and an unsorted manifest,
- * gx_epochs_validate and gx_epochs_manifest on the daily epoch index of
- * conformance/epochs/valid/daily.json and an unsorted index, and
+ * gx_epochs_validate and gx_epochs_manifest on the regular epoch index of
+ * conformance/epochs/valid/regular.json and an unsorted index, and
  * gx_section_address against two cases of conformance/address/cases.json,
  * and gx_validate under a frame- key and gx_frame_record_agrees on the
  * vectors of conformance/frame-record/valid/, and gx_validate and
@@ -220,7 +220,7 @@ int main(int argc, char** argv) {
     free(man);
     free(bad);
 
-    /* Epoch indexes, cases from conformance/epochs/valid/daily.json. */
+    /* Epoch indexes, cases from conformance/epochs/valid/regular.json. */
     size_t ep_len = 0;
     size_t bad_ep_len = 0;
     uint8_t* ep = read_file(argv[7], &ep_len);
@@ -237,19 +237,19 @@ int main(int argc, char** argv) {
           "null epochs bytes with non-zero length returns 106");
     uint8_t man_hash[32];
     char got[65];
-    check(gx_epochs_manifest(ep, ep_len, 3600, 23, man_hash) == 0,
-          "hour 23 lies in a listed epoch");
+    check(gx_epochs_manifest(ep, ep_len, 3600, 19, man_hash) == 0,
+          "hour 19 lies in a listed epoch");
     hex32(man_hash, got);
     check(strcmp(got, "f0db36f05de86ecb6966a89e7001c144ddb3101a270ffdcb3b713fabdf755ab8") == 0,
-          "hour 23 has the manifest of epoch 0");
-    check(gx_epochs_manifest(ep, ep_len, 3600, 24, man_hash) == 0,
-          "hour 24 lies in a listed epoch");
+          "hour 19 has the manifest of epoch 0");
+    check(gx_epochs_manifest(ep, ep_len, 3600, 20, man_hash) == 0,
+          "hour 20 lies in a listed epoch");
     hex32(man_hash, got);
     check(strcmp(got, "cde526ce98384a370093912025c8351ca9adf9ba6c646034172482a0acfb7793") == 0,
-          "hour 24 has the manifest of epoch 1");
+          "hour 20 has the manifest of epoch 1");
     memset(man_hash, 0x7f, sizeof man_hash);
-    check(gx_epochs_manifest(ep, ep_len, 3600, 48, man_hash) == 1,
-          "hour 48 lies in an epoch that is not listed");
+    check(gx_epochs_manifest(ep, ep_len, 3600, 40, man_hash) == 1,
+          "hour 40 lies in an epoch that is not listed");
     check(gx_epochs_manifest(ep, ep_len, 7, 0, man_hash) == -1010,
           "a span that does not divide the epoch returns -1010");
     check(gx_epochs_manifest(ep, ep_len, 0, 0, man_hash) == -1009,

@@ -763,7 +763,7 @@ mod tests {
             root_extent: Meters::new(1.0e8),
             max_depth: 20,
             mass: Kilograms::new(6.0e24),
-            position: Vec3::new(1.5e11, -2.0e9, 0.0),
+            position: Vec3::new(1.13e11, -2.0e9, 0.0),
             velocity: Vec3::new(0.0, 2.98e4, 1.0),
             orientation: Quat::new(0.48, 0.6, 0.0, 0.64),
             angular_velocity: Vec3::new(0.0, 0.0, 7.3e-5),
@@ -840,7 +840,7 @@ mod tests {
         assert_eq!(r[24], 20);
         assert!(r[25..32].iter().all(|&x| x == 0));
         assert_eq!(f64_at(r, 32), 6.0e24);
-        assert_eq!(f64_at(r, 40), 1.5e11);
+        assert_eq!(f64_at(r, 40), 1.13e11);
         assert_eq!(f64_at(r, 72), 2.98e4);
         assert_eq!(f64_at(r, 88), 0.48);
         assert_eq!(f64_at(r, 112), 0.64);
@@ -911,7 +911,7 @@ mod tests {
     fn oblateness_and_moments_accept_their_edges() {
         let mut f = child(10, 1);
         f.j2 = 1.08e-3;
-        f.reference_radius = Meters::new(6.378e6);
+        f.reference_radius = Meters::new(5.71e6);
         // Equality in the triangle rule is allowed: a thin flat plate.
         f.principal_moments = Vec3::new(1.0, 1.0, 2.0);
         assert!(Registry::new(epoch(), vec![f]).is_ok());

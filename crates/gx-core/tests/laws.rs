@@ -176,11 +176,11 @@ fn two_body_momentum_is_conserved() {
 #[test]
 fn constant_rotation_quarter_turn() {
     let mut root = frame(1, ROOT_PARENT, 0.0, Vec3::zero(), Vec3::zero());
-    root.angular_velocity = Vec3::new(0.0, 0.0, 2.0 * PI / 86400.0);
+    root.angular_velocity = Vec3::new(0.0, 0.0, 2.0 * PI / 75_600.0);
     let mut s = system(vec![root]);
     advance(
         &mut s,
-        Seconds::new(21600.0),
+        Seconds::new(18_900.0),
         Seconds::new(0.5),
         Scheme::Yoshida4,
     );

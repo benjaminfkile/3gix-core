@@ -49,21 +49,21 @@ fn frame(id: u64, parent: u64, mass: f64, position: [f64; 3], velocity: [f64; 3]
 
 /// The registry every case starts from.
 pub(crate) fn registry() -> Registry {
-    let mut oblate = frame(3, 1, 6.0e24, [1.5e11, 0.0, 0.0], [0.0, 2.98e4, 0.0]);
-    oblate.j2 = 1.1e-3;
-    oblate.reference_radius = Meters::new(6.4e6);
-    oblate.principal_moments = Vec3::new(8.0e37, 8.0e37, 8.027e37);
+    let mut oblate = frame(3, 1, 4.1e24, [1.13e11, 0.0, 0.0], [0.0, 3.99e4, 0.0]);
+    oblate.j2 = 1.37e-3;
+    oblate.reference_radius = Meters::new(5.71e6);
+    oblate.principal_moments = Vec3::new(4.41e37, 4.41e37, 4.43e37);
     oblate.orientation = Quat::new(0.28, 0.0, 0.0, 0.96);
-    oblate.angular_velocity = Vec3::new(0.0, 0.0, 7.3e-5);
-    let companion = frame(4, 3, 7.3e22, [3.8e8, 0.0, 0.0], [0.0, 1.0e3, 30.0]);
-    let probe = frame(5, 4, 0.0, [0.0, 2.0e6, 0.0], [-1.6e3, 0.0, 0.0]);
-    let mut triaxial = frame(6, 1, 3.0e20, [0.0, -4.0e11, 1.0e9], [1.8e4, 0.0, 0.0]);
+    oblate.angular_velocity = Vec3::new(0.0, 0.0, 6.1e-5);
+    let companion = frame(4, 3, 5.6e22, [2.9e8, 0.0, 0.0], [0.0, 9.7e2, 30.0]);
+    let probe = frame(5, 4, 0.0, [0.0, 2.0e6, 0.0], [-1.37e3, 0.0, 0.0]);
+    let mut triaxial = frame(6, 1, 3.0e20, [0.0, -4.0e11, 1.0e9], [2.12e4, 0.0, 0.0]);
     triaxial.principal_moments = Vec3::new(1.0e30, 1.2e30, 1.5e30);
     triaxial.orientation = Quat::new(0.36, 0.48, 0.0, 0.8);
     triaxial.angular_velocity = Vec3::new(1.0e-5, 2.0e-6, 3.0e-4);
     let frames = vec![
         frame(1, ROOT_PARENT, 0.0, [0.0; 3], [0.0; 3]),
-        frame(2, 1, 2.0e30, [0.0; 3], [0.0; 3]),
+        frame(2, 1, 2.7e30, [0.0; 3], [0.0; 3]),
         oblate,
         companion,
         probe,
@@ -72,11 +72,15 @@ pub(crate) fn registry() -> Registry {
     Registry::new(Seconds::new(EPOCH), frames).expect("a fixed valid registry")
 }
 
+/// Length of the cases' made-up unit of time in seconds: 21 hours, no
+/// body's day.
+pub(crate) const UNIT: f64 = 75_600.0;
+
 /// `(name, seconds after the epoch, step limit)`.
 const CASES: [(&str, f64, f64); 3] = [
-    ("one-day", 86_400.0, 600.0),
-    ("thirty-days", 30.0 * 86_400.0, 3_600.0),
-    ("back-half-day", -43_200.0, 900.0),
+    ("one-unit", UNIT, 600.0),
+    ("thirty-units", 30.0 * UNIT, 3_600.0),
+    ("back-half-unit", -0.5 * UNIT, 900.0),
 ];
 
 /// The state bytes of the registry integrated to `EPOCH + offset`.

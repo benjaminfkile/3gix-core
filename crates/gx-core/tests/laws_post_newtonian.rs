@@ -1,7 +1,8 @@
 //! Tests for the v2 laws (`space-model.md` sections 6.1, 6.2, and 7 item 6):
-//! first post-Newtonian gravity, oblateness, rotation under torques, and the
-//! checkpoint history, with the tolerances the task sets. Scenarios are
-//! named by number.
+//! oblateness, rotation under torques, and the checkpoint history, with the
+//! tolerances the task sets, on made-up bodies. Scenarios are named by
+//! number; scenarios 1 and 3 compare with real measurements and live in
+//! `laws_measured.rs`.
 
 use core::f64::consts::PI;
 
@@ -12,9 +13,8 @@ use gx_core::integrate::{advance, step, Scheme};
 use gx_core::registry::{Frame, FrameTree, Registry, ROOT_PARENT};
 use gx_core::units::{Kilograms, Meters, Quat, Seconds, Vec3};
 
-const DAY: f64 = 86_400.0;
-const YEAR: f64 = 365.25 * DAY;
-const ARCSEC: f64 = PI / (180.0 * 3600.0);
+/// A made-up unit of time in seconds for the history tests: 21 hours.
+const UNIT: f64 = 75_600.0;
 
 fn frame(id: u64, parent: u64, mass: f64, position: Vec3, velocity: Vec3) -> Frame {
     Frame {
@@ -62,79 +62,14 @@ fn axis_angle(axis: Vec3, angle: f64) -> Quat {
     let s = (0.5 * angle).sin();
     Quat::new(axis.x * s, axis.y * s, axis.z * s, (0.5 * angle).cos())
 }
-
-// Scenario 1: perihelion advance.
-
-const GM1: f64 = 1.327_124_400_18e20;
-const A1: f64 = 5.7909e10;
-const E1: f64 = 0.2056;
-
-/// A massive root with `GM1` and a massless frame at the periapsis of an
-/// orbit with semi-major axis `A1` and eccentricity `E1`.
-fn scenario_1() -> FrameSystem {
-    let rp = A1 * (1.0 - E1);
-    let vp = (GM1 * (1.0 + E1) / rp).sqrt();
-    system(vec![
-        frame(1, ROOT_PARENT, GM1 / G, Vec3::zero(), Vec3::zero()),
-        frame(2, 1, 0.0, Vec3::new(rp, 0.0, 0.0), Vec3::new(0.0, vp, 0.0)),
-    ])
-}
-
-/// Integrates scenario 1 for one century of 36 525 days with `steps_per_orbit`
-/// fixed steps per orbit and returns the fitted rate of the periapsis
-/// angle in arcseconds per century. At every periapsis passage (the
-/// radial velocity turning from negative to positive) the in-plane angle of the
-/// eccentricity vector is recorded; sampling at the same orbital phase every
-/// time removes the periodic part of the osculating elements.
-fn periapsis_rate(scheme: Scheme, steps_per_orbit: f64) -> f64 {
-    let mut s = scenario_1();
-    let period = 2.0 * PI * (A1 * A1 * A1 / GM1).sqrt();
-    let dt = period / steps_per_orbit;
-    let total = 100.0 * YEAR;
-    let count = (total / dt).ceil() as u64;
-    let mut points = Vec::new();
-    let mut previous_radial = -1.0;
-    let mut last_angle = 0.0;
-    for _ in 0..count {
-        step(&mut s, Seconds::new(dt), scheme);
-        let r = s.root_position(2) - s.root_position(1);
-        let v = s.root_velocity(2) - s.root_velocity(1);
-        let radial = r.dot(v);
-        if previous_radial < 0.0 && radial >= 0.0 {
-            let h = r.cross(v);
-            let e = v.cross(h) - r.scale(GM1 / r.length());
-            let angle = unwrap(last_angle, e.y.atan2(e.x));
-            last_angle = angle;
-            points.push((s.time().value(), angle));
-        }
-        previous_radial = radial;
-    }
-    assert!(points.len() > 400, "{} passages", points.len());
-    slope(&points) * 100.0 * YEAR / ARCSEC
-}
-
-#[test]
-fn scenario_1_periapsis_advance() {
-    let rel = periapsis_rate(Scheme::Relativistic, 3000.0);
-    assert!(
-        (rel - 42.98).abs() < 0.02 * 42.98,
-        "first post-Newtonian advance {rel} arcsec per century"
-    );
-    let newton = periapsis_rate(Scheme::Yoshida4, 3000.0);
-    assert!(
-        newton.abs() < 0.1,
-        "Newtonian advance {newton} arcsec per century"
-    );
-}
-
 // Scenario 2: node precession of a low orbit around an oblate frame.
 
 #[test]
 fn scenario_2_node_precession() {
-    let mass = 5.972e24;
-    let radius = 6.378_137e6;
-    let j2 = 1.0826e-3;
-    let a = 7.0e6;
+    let mass = 4.1e24;
+    let radius = 5.71e6;
+    let j2 = 1.37e-3;
+    let a = 6.3e6;
     let inc = 45.0f64.to_radians();
     let gm = G * mass;
     let speed = (gm / a).sqrt();
@@ -173,22 +108,22 @@ fn scenario_2_node_precession() {
         "node rate {rate} rad/s, analytic {expect}, error {err}"
     );
 }
+// A made-up spinning system: a central mass, an oblate rigid body on a
+// circular orbit, and its companion. The values match no real body.
 
-// Scenario 3: spin axis precession under two torquing masses.
-
-const M_CENTRAL: f64 = 1.989e30;
-const D_CENTRAL: f64 = 1.496e11;
-const M_BODY: f64 = 5.972e24;
-const R_BODY: f64 = 6.378_137e6;
-const M_COMPANION: f64 = 7.342e22;
-const D_COMPANION: f64 = 3.844e8;
+const M_CENTRAL: f64 = 2.7e30;
+const D_CENTRAL: f64 = 1.13e11;
+const M_BODY: f64 = 4.1e24;
+const R_BODY: f64 = 5.71e6;
+const M_COMPANION: f64 = 5.6e22;
+const D_COMPANION: f64 = 2.9e8;
 
 /// A massless root (the barycenter), the central mass (frame 2), the
 /// oblate rigid body (frame 3) on a circular orbit of radius `D_CENTRAL`
 /// together with its companion (frame 4, circular orbit of radius
 /// `D_COMPANION` around frame 3, in the same plane). Frame 3 spins once in
-/// 23.93 hours about its z axis, tilted 23.44 degrees from the orbit normal.
-fn scenario_3() -> FrameSystem {
+/// 21.3 hours about its z axis, tilted 17.2 degrees from the orbit normal.
+fn spinning_system() -> FrameSystem {
     let pair = M_BODY + M_COMPANION;
     let v_pair = (G * (M_CENTRAL + pair) / D_CENTRAL).sqrt();
     let v_rel = (G * pair / D_COMPANION).sqrt();
@@ -211,14 +146,14 @@ fn scenario_3() -> FrameSystem {
         Vec3::new(pair_share * D_CENTRAL - body_off * D_COMPANION, 0.0, 0.0),
         Vec3::new(0.0, pair_share * v_pair - body_off * v_rel, 0.0),
     );
-    let c = 0.3307 * M_BODY * R_BODY * R_BODY;
-    let j2 = 1.0826e-3;
+    let c = 0.341 * M_BODY * R_BODY * R_BODY;
+    let j2 = 1.37e-3;
     let a = c - j2 * M_BODY * R_BODY * R_BODY;
     body.j2 = j2;
     body.reference_radius = Meters::new(R_BODY);
     body.principal_moments = Vec3::new(a, a, c);
-    body.orientation = axis_angle(Vec3::new(1.0, 0.0, 0.0), 23.44f64.to_radians());
-    body.angular_velocity = Vec3::new(0.0, 0.0, 2.0 * PI / (23.93 * 3600.0));
+    body.orientation = axis_angle(Vec3::new(1.0, 0.0, 0.0), 17.2f64.to_radians());
+    body.angular_velocity = Vec3::new(0.0, 0.0, 2.0 * PI / (21.3 * 3600.0));
     let companion = frame(
         4,
         3,
@@ -234,36 +169,14 @@ fn scenario_3() -> FrameSystem {
     ])
 }
 
-#[test]
-fn scenario_3_spin_axis_precession() {
-    let mut s = scenario_3();
-    let dt = 3600.0;
-    let mut points = Vec::new();
-    let mut last = -PI / 2.0;
-    let samples = (20.0 * YEAR / DAY) as u64;
-    for _ in 0..samples {
-        for _ in 0..24 {
-            step(&mut s, Seconds::new(dt), Scheme::default());
-        }
-        let axis = s.root_orientation(3).rotate(Vec3::new(0.0, 0.0, 1.0));
-        let angle = unwrap(last, axis.y.atan2(axis.x));
-        last = angle;
-        points.push((s.time().value(), angle));
-    }
-    let rate = slope(&points) * YEAR / ARCSEC;
-    assert!(rate < 0.0, "the axis precesses against the orbit: {rate}");
-    let err = (rate.abs() - 50.3).abs() / 50.3;
-    assert!(err < 0.05, "precession {rate} arcsec per year, error {err}");
-    // The obliquity stays near its start.
-    let axis = s.root_orientation(3).rotate(Vec3::new(0.0, 0.0, 1.0));
-    let obliquity = axis.z.acos().to_degrees();
-    assert!((obliquity - 23.44).abs() < 0.1, "obliquity {obliquity}");
-}
-
 // Scenario 4: a locked companion stays locked.
 
-const M_PARENT: f64 = 5.972e24;
-const R_LOCKED: f64 = 1.7374e6;
+const M_PARENT: f64 = M_BODY;
+const R_LOCKED: f64 = 1.42e6;
+/// Length of each lock run in seconds: about 160 orbits of the companion.
+const LOCK_RUN: f64 = 3.0e8;
+/// Seconds between two samples of the lock angle: 24 steps of one hour.
+const SAMPLE: f64 = 24.0 * 3600.0;
 
 /// A massive root (the parent) and a companion of `M_COMPANION` on a
 /// circular orbit of radius `D_COMPANION` in the root's x y plane, started
@@ -303,10 +216,10 @@ fn scenario_4(spin_ratio: f64, rigid: bool) -> FrameSystem {
 }
 
 /// The largest angle, in degrees, between the companion's x axis and the
-/// direction to the parent over ten years, sampled daily.
+/// direction to the parent over `LOCK_RUN`, sampled every `SAMPLE`.
 fn worst_lock_angle(mut s: FrameSystem) -> f64 {
     let mut worst: f64 = 0.0;
-    for _ in 0..((10.0 * YEAR / DAY) as u64) {
+    for _ in 0..((LOCK_RUN / SAMPLE) as u64) {
         for _ in 0..24 {
             step(&mut s, Seconds::new(3600.0), Scheme::default());
         }
@@ -331,22 +244,21 @@ fn scenario_4_lock_is_stable() {
     let free = worst_lock_angle(scenario_4(1.0 + 2.0e-4, false));
     assert!(free > 5.0, "without moments: worst angle {free} degrees");
 }
-
 // Determinism and the history.
 
-/// Scenario 3 with an extra massless frame, run for 30 days with the
+/// The spinning system, run for 30 units of time with the
 /// default scheme in uneven calls.
 fn short_run() -> FrameSystem {
-    let mut s = scenario_3();
+    let mut s = spinning_system();
     advance(
         &mut s,
-        Seconds::new(10.0 * DAY),
+        Seconds::new(10.0 * UNIT),
         Seconds::new(1800.0),
         Scheme::default(),
     );
     advance(
         &mut s,
-        Seconds::new(30.0 * DAY),
+        Seconds::new(30.0 * UNIT),
         Seconds::new(2700.0),
         Scheme::default(),
     );
@@ -378,20 +290,20 @@ impl SplitMix64 {
 fn history_matches_direct_integration() {
     let max_step = Seconds::new(1800.0);
     let mut history = History::new(
-        scenario_3(),
-        Seconds::new(DAY),
+        spinning_system(),
+        Seconds::new(UNIT),
         max_step,
         Scheme::default(),
         16,
     );
     let mut rng = SplitMix64(7);
-    let mut times: Vec<f64> = (0..12).map(|_| rng.unit() * 60.0 * DAY).collect();
+    let mut times: Vec<f64> = (0..12).map(|_| rng.unit() * 60.0 * UNIT).collect();
     // Out of order on purpose: later times extend the history, earlier ones
     // restore checkpoints.
     times.swap(0, 11);
     for t in times {
         let from_history = history.state_at(Seconds::new(t));
-        let mut direct = scenario_3();
+        let mut direct = spinning_system();
         advance(&mut direct, Seconds::new(t), max_step, Scheme::default());
         assert_eq!(from_history.time(), direct.time());
         for id in [2, 3, 4] {
@@ -411,7 +323,7 @@ fn history_matches_direct_integration() {
     }
     assert!(history.len() <= 16);
     assert!(
-        history.interval().value() > DAY,
+        history.interval().value() > UNIT,
         "the history thinned itself"
     );
 }

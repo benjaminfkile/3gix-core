@@ -169,7 +169,7 @@ for (const [file, want] of Object.entries(json("manifest/invalid/index.json").ve
   check(got === want, `manifest ${file}: ${got}`);
 }
 
-for (const name of ["daily", "empty", "widest"]) {
+for (const name of ["regular", "empty", "widest"]) {
   const bytes = bin(`epochs/valid/${name}.bin`);
   check(code(() => gx.epochs_validate(bytes)) === 0, `epochs ${name}`);
   for (const c of json(`epochs/valid/${name}.json`).cases) {
