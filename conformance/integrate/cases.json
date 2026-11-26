@@ -8,8 +8,8 @@
       "name": "one-day",
       "state": "one-day.bin",
       "to_seconds": {
-        "bits": "0x41c8247800000000",
-        "decimal": "8.100864e8"
+        "bits": "0x40f5180000000000",
+        "decimal": "8.64e4"
       }
     },
     {
@@ -20,8 +20,8 @@
       "name": "thirty-days",
       "state": "thirty-days.bin",
       "to_seconds": {
-        "bits": "0x41c83795c0000000",
-        "decimal": "8.12592e8"
+        "bits": "0x4143c68000000000",
+        "decimal": "2.592e6"
       }
     },
     {
@@ -32,8 +32,8 @@
       "name": "back-half-day",
       "state": "back-half-day.bin",
       "to_seconds": {
-        "bits": "0x41c8237ae0000000",
-        "decimal": "8.099568e8"
+        "bits": "0xc0e5180000000000",
+        "decimal": "-4.32e4"
       }
     }
   ],

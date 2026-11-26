@@ -16,14 +16,6 @@
       ],
       "outcome": "error"
     },
-    "epoch-mismatch": {
-      "code": 651,
-      "files": [
-        "valid-a.bin",
-        "valid-b-later-epoch.bin"
-      ],
-      "outcome": "error"
-    },
     "missing-parent": {
       "code": 655,
       "files": [

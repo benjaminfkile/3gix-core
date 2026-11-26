@@ -14,8 +14,8 @@
 //! > all frames regardless of the tree.
 //!
 //! A [`FrameSystem`] holds a [`FrameTree`], the current [`FrameState`] of
-//! every frame, and the current time in seconds of Barycentric Dynamical Time
-//! since J2000. [`crate::integrate`] advances it; this module only reads and
+//! every frame, and the current time in seconds since the origin.
+//! [`crate::integrate`] advances it; this module only reads and
 //! transforms.
 //!
 //! # Coordinates
@@ -106,7 +106,7 @@ impl FrameSystem {
         }
     }
 
-    /// Current time in seconds of Barycentric Dynamical Time since J2000.
+    /// Current time in seconds since the origin.
     pub fn time(&self) -> Seconds {
         self.time
     }
@@ -351,7 +351,7 @@ mod tests {
             frame(7, 5, Vec3::new(0.0, 10.0, 0.0), quarter_x),
             frame(3, 1, Vec3::new(0.0, 0.0, -50.0), Quat::identity()),
         ];
-        let reg = Registry::new(Seconds::new(42.0), frames).unwrap();
+        let reg = Registry::new(Seconds::new(0.0), frames).unwrap();
         FrameSystem::from_tree(FrameTree::from_registries(&[reg]).unwrap())
     }
 
@@ -362,7 +362,7 @@ mod tests {
     #[test]
     fn epoch_states_and_time() {
         let s = system();
-        assert_eq!(s.time(), Seconds::new(42.0));
+        assert_eq!(s.time(), Seconds::new(0.0));
         assert_eq!(s.state(7).unwrap().position, Vec3::new(0.0, 10.0, 0.0));
         assert!(s.state(2).is_none());
         assert_eq!(s.tree().root().frame_id, 1);

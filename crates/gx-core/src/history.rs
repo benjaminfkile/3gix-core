@@ -87,7 +87,7 @@ impl History {
         }
     }
 
-    /// The time of checkpoint 0, seconds of TDB since J2000.
+    /// The time of checkpoint 0, seconds since the origin.
     pub fn epoch(&self) -> Seconds {
         self.epoch
     }
@@ -248,7 +248,7 @@ mod tests {
             principal_moments: Vec3::zero(),
         };
         let reg = Registry::new(
-            Seconds::new(100.0),
+            Seconds::new(0.0),
             vec![
                 frame(1, ROOT_PARENT, 1.0e30, 0.0, 0.0),
                 frame(2, 1, 0.0, 1.0e11, 2.6e4),
@@ -267,23 +267,20 @@ mod tests {
             Scheme::Yoshida4,
             4,
         );
-        assert_eq!(h.epoch(), Seconds::new(100.0));
-        h.extend_to(Seconds::new(100.0 + 3999.0));
+        assert_eq!(h.epoch(), Seconds::new(0.0));
+        h.extend_to(Seconds::new(3999.0));
         assert_eq!(h.len(), 4);
         assert_eq!(h.interval(), Seconds::new(1000.0));
-        h.extend_to(Seconds::new(100.0 + 4000.0));
+        h.extend_to(Seconds::new(4000.0));
         assert_eq!(h.len(), 3);
         assert_eq!(h.interval(), Seconds::new(2000.0));
-        h.extend_to(Seconds::new(100.0 + 50_000.0));
+        h.extend_to(Seconds::new(50_000.0));
         assert!(h.len() <= 4);
         for (k, c) in h.checkpoints().iter().enumerate() {
-            assert_eq!(
-                c.time(),
-                Seconds::new(100.0 + k as f64 * h.interval().value())
-            );
+            assert_eq!(c.time(), Seconds::new(k as f64 * h.interval().value()));
         }
-        assert!(h.latest() <= Seconds::new(100.0 + 50_000.0));
-        assert!(h.latest() + h.interval() > Seconds::new(100.0 + 50_000.0));
+        assert!(h.latest() <= Seconds::new(50_000.0));
+        assert!(h.latest() + h.interval() > Seconds::new(50_000.0));
     }
 
     #[test]
@@ -295,15 +292,15 @@ mod tests {
             Scheme::Relativistic,
             8,
         );
-        let at = h.state_at(Seconds::new(2100.0));
+        let at = h.state_at(Seconds::new(2000.0));
         assert_eq!(at, h.checkpoints()[2]);
-        assert_eq!(h.peek(Seconds::new(2100.0)), at);
+        assert_eq!(h.peek(Seconds::new(2000.0)), at);
         assert_eq!(
-            h.peek(Seconds::new(2600.0)),
-            h.state_at(Seconds::new(2600.0))
+            h.peek(Seconds::new(2500.0)),
+            h.state_at(Seconds::new(2500.0))
         );
-        let before = h.state_at(Seconds::new(50.0));
-        assert_eq!(before.time(), Seconds::new(50.0));
+        let before = h.state_at(Seconds::new(-50.0));
+        assert_eq!(before.time(), Seconds::new(-50.0));
         assert!(!h.is_empty());
         assert_eq!(h.capacity(), 8);
     }

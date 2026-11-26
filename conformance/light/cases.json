@@ -27,8 +27,8 @@
       ],
       "state_file": "companion-thirty-days.bin",
       "t_seconds": {
-        "bits": "0x41c83795c0000000",
-        "decimal": "8.12592e8"
+        "bits": "0x4143c68000000000",
+        "decimal": "2.592e6"
       }
     },
     {
@@ -58,8 +58,8 @@
       ],
       "state_file": "oblate-one-day.bin",
       "t_seconds": {
-        "bits": "0x41c8247800000000",
-        "decimal": "8.100864e8"
+        "bits": "0x40f5180000000000",
+        "decimal": "8.64e4"
       }
     },
     {
@@ -89,8 +89,8 @@
       ],
       "state_file": "clamped.bin",
       "t_seconds": {
-        "bits": "0x41c823cf72000000",
-        "decimal": "8.100001e8"
+        "bits": "0x4059000000000000",
+        "decimal": "1e2"
       }
     },
     {
@@ -120,8 +120,8 @@
       ],
       "state_file": "probe-two-days.bin",
       "t_seconds": {
-        "bits": "0x41c82520c0000000",
-        "decimal": "8.101728e8"
+        "bits": "0x4105180000000000",
+        "decimal": "1.728e5"
       }
     }
   ],

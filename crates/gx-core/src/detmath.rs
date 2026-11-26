@@ -2,9 +2,8 @@
 //!
 //! The platform `exp`, `sin`, `cos`, and `tan` come from the system math library, whose
 //! last bit differs between platforms. The laws in [`crate::radiance`],
-//! [`crate::extinction`], and [`crate::lod`], the rotation law in
-//! [`crate::rotation`], and the time scale conversion in
-//! [`crate::timescale`], need those functions and are held
+//! [`crate::extinction`], and [`crate::lod`], and the rotation law in
+//! [`crate::rotation`] need those functions and are held
 //! to the determinism rule of `docs/determinism.md`, so this module writes
 //! them out with `+`, `-`, `*`, `/`, `round`, and exact power of two scaling
 //! only. Every operation used is correctly rounded in IEEE 754, so the result

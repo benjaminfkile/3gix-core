@@ -37,8 +37,8 @@
 //!
 //! The iteration stops when two successive iterates differ by at most
 //! [`TOLERANCE`] (1e-9 s), or by at most two units in the last place of
-//! `t`, whichever is coarser: far from J2000 an `f64` time cannot resolve
-//! 1e-9 s (its spacing near `7e8` s is about `1.2e-7` s), and the iterates
+//! `t`, whichever is coarser: far from the origin an `f64` time cannot
+//! resolve 1e-9 s (its spacing near `7e8` s is about `1.2e-7` s), and the iterates
 //! then settle on the nearest representable times. It also stops after
 //! [`MAX_ITERATIONS`] passes, which a frame slower than light never needs.
 //!
@@ -78,7 +78,7 @@ pub const MAX_ITERATIONS: u32 = 32;
 /// The solution of one light-time equation.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct LightTime {
-    /// The retarded time, seconds of TDB since J2000: when the light now
+    /// The retarded time, seconds since the origin: when the light now
     /// arriving left the frame, or the history's epoch if that was earlier.
     pub time: Seconds,
     /// Whether the retarded time lay before the history's epoch and was

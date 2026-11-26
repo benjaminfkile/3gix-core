@@ -2,8 +2,8 @@
 //! produces exactly the files checked in under `conformance/matter/`,
 //! `conformance/registry/`, `conformance/container/`, `conformance/address/`,
 //! `conformance/manifest/`, `conformance/epochs/`, `conformance/frame-record/`, `conformance/module-io/`,
-//! `conformance/module-v2/`, `conformance/module-frame/`, and
-//! `conformance/timescale/`, byte for byte, with no file missing or extra.
+//! `conformance/module-v2/`, `conformance/module-frame/`,
+//! `conformance/overlay/`, and `conformance/module-overlay/`, byte for byte, with no file missing or extra.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -51,7 +51,6 @@ fn generator_reproduces_checked_in_vectors() {
         "module-frame",
         "overlay",
         "module-overlay",
-        "timescale",
     ] {
         let fresh = scratch.join(dir);
         let checked_in = Path::new(env!("CARGO_MANIFEST_DIR"))

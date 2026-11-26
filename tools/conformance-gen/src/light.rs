@@ -31,7 +31,7 @@ fn numbers(v: &[f64]) -> Value {
 /// `(name, frame, observer, seconds after the epoch, interval, step limit)`.
 type LightCase = (&'static str, u64, [f64; 3], f64, f64, f64);
 
-/// Light cases against the integrator vectors' registry (epoch 8.1e8 s).
+/// Light cases against the integrator vectors' registry (epoch 0, the origin).
 const LIGHT: [LightCase; 4] = [
     (
         "companion-thirty-days",

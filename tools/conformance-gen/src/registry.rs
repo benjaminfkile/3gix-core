@@ -24,9 +24,9 @@ use serde_json::{json, Value};
 
 use crate::{number, pretty, File};
 
-/// Epoch shared by every vector: seconds of Barycentric Dynamical Time since
-/// J2000.
-const EPOCH: f64 = 8.1e8;
+/// Epoch shared by every vector: 0, the origin, the only epoch a registry
+/// may have (`matter-format.md` section 5).
+const EPOCH: f64 = 0.0;
 
 #[allow(clippy::too_many_arguments)]
 fn frame(
@@ -310,14 +310,14 @@ fn invalid() -> Vec<File> {
     add("frame-count-zero", codes::REGISTRY_LENGTH_MISMATCH, &|b| {
         b[16] = 0
     });
-    add(
-        "empty-epoch-nonzero",
-        codes::REGISTRY_EMPTY_EPOCH_NONZERO,
-        &|b| {
-            b.truncate(HEADER_LEN);
-            b[16] = 0;
-        },
-    );
+    add("epoch-nonzero", codes::REGISTRY_EPOCH_NONZERO, &|b| {
+        put_f64(b, 8, 1.0)
+    });
+    add("empty-epoch-nonzero", codes::REGISTRY_EPOCH_NONZERO, &|b| {
+        b.truncate(HEADER_LEN);
+        b[16] = 0;
+        put_f64(b, 8, 1.0);
+    });
 
     // Records.
     add(
@@ -494,14 +494,10 @@ pub(crate) fn valid_b() -> Registry {
 }
 
 fn union() -> Vec<File> {
-    let regs: [(&str, Registry); 9] = [
+    let regs: [(&str, Registry); 8] = [
         ("valid-a", valid_a()),
         ("valid-b", valid_b()),
         ("empty", Registry::empty()),
-        (
-            "valid-b-later-epoch",
-            registry(EPOCH + 1.0, vec![grandchild(), far_child()]),
-        ),
         (
             "duplicate-of-a",
             registry(EPOCH, vec![grandchild(), children()[1]]),
@@ -567,11 +563,6 @@ fn union() -> Vec<File> {
             name: "valid-pair-reversed-with-empty",
             files: &["empty", "valid-b", "valid-a"],
             code: None,
-        },
-        Case {
-            name: "epoch-mismatch",
-            files: &["valid-a", "valid-b-later-epoch"],
-            code: Some(codes::UNION_EPOCH_MISMATCH),
         },
         Case {
             name: "duplicate-id",

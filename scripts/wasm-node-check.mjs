@@ -2,7 +2,7 @@
 // against the conformance vectors the native build is tested with, so the two
 // must agree byte for byte: section addresses, layer identities and version
 // 2 addresses, frames slot values, input span indexes, input lists and the
-// inputs hash, UTC to TDB bit patterns and
+// inputs hash, universe time bit patterns from wall-clock milliseconds and
 // back, source manifest validation, epoch index validation and the epoch
 // rule cases, frame record validation under `frame-` keys, overlay tile
 // validation and the layer-aware check (`validate_layer`), matter format version 3 validation
@@ -130,17 +130,35 @@ check(code(() => gx.section_address(new Uint8Array(32), undefined, 0n, 0n, 0n, "
   }
 }
 
-for (const c of json("timescale/cases.json").cases) {
-  const tdb = gx.utc_ms_to_tdb_seconds(BigInt(c.utc_ms));
-  check(f64Bits(tdb) === c.tdb_seconds.bits, `utc_ms_to_tdb_seconds ${c.name}: ${f64Bits(tdb)}`);
-  const back = gx.tdb_seconds_to_utc_ms(tdb);
-  check(back === BigInt(c.back_utc_ms), `tdb_seconds_to_utc_ms ${c.name}: ${back}`);
-}
-for (const c of json("timescale/inverse.json").cases) {
-  const view = new DataView(new ArrayBuffer(8));
-  view.setBigUint64(0, BigInt(c.tdb_seconds.bits), true);
-  const back = gx.tdb_seconds_to_utc_ms(view.getFloat64(0, true));
-  check(back === BigInt(c.utc_ms), `inverse inside the leap second: ${back}`);
+// The same cases and bit patterns as `BIT_CASES` in crates/gx-core/src/clock.rs:
+// [wall_ms, origin_ms, bits of universe_seconds].
+{
+  const origin = 1234567890123n;
+  const b51 = 1n << 51n;
+  const cases = [
+    [origin, origin, "0x0000000000000000"],
+    [origin + 1n, origin, "0x3f50624dd2f1a9fc"],
+    [origin - 1n, origin, "0xbf50624dd2f1a9fc"],
+    [origin + 86399999n, origin, "0x40f517fffbe76c8b"],
+    [b51 - 1n, 0n, "0x4280624dd2f1a9fa"],
+    [-(b51 - 1n), 0n, "0xc280624dd2f1a9fa"],
+    [1700000000000n, 1600000000000n, "0x4197d78400000000"],
+  ];
+  for (const [wall, o, bits] of cases) {
+    const t = gx.universe_seconds(wall, o);
+    check(f64Bits(t) === bits, `universe_seconds ${wall} ${o}: ${f64Bits(t)}`);
+    const back = gx.wall_ms(t, o);
+    check(back === wall, `wall_ms ${wall} ${o}: ${back}`);
+  }
+  check(gx.wall_ms(-0.0005, 0n) === -1n, "wall_ms rounds half away from zero");
+  check(gx.wall_ms(Infinity, 0n) === (1n << 63n) - 1n, "wall_ms saturates");
+  let threw = false;
+  try {
+    gx.universe_seconds((1n << 63n) - 1n, -1n);
+  } catch {
+    threw = true;
+  }
+  check(threw, "universe_seconds throws on overflow");
 }
 
 for (const name of ["empty", "one", "three"]) {

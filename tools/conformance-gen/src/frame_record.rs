@@ -59,7 +59,7 @@ fn frames() -> Vec<Frame> {
 
 fn valid() -> Vec<File> {
     let fs = frames();
-    let registry = Registry::new(Seconds::new(1.0e8), fs.clone()).expect("valid registry");
+    let registry = Registry::new(Seconds::new(0.0), fs.clone()).expect("valid registry");
     let mut out = vec![(
         "frame-record/valid/registry.bin".to_string(),
         registry::encode(&registry),

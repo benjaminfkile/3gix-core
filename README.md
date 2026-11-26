@@ -11,7 +11,7 @@ The shared library of the 3GIX space runtime. It is the only place the renderer,
 - **Chunk keys and the frame registry.** Encoding, decoding, and validation. The registry is format version 2: 184-byte frame records with `j2`, `reference_radius`, and `principal_moments`; version 1 is rejected.
 - **Frame records.** `matter-format.md` section 11: the 88-byte record under the key `frame-{frameId}` holding the constant part of a registry frame (parent, extent, depth, mass, `j2`, reference radius, moments), its empty form, validation (codes 1021 to 1029, also through `gx_validate`), and the section 11.4 agreement check against a registry (`frame_record::agrees`, `gx_frame_record_agrees`).
 - **Section addresses, source manifests, module bytes.** The SHA-256 section address and span index of `client-compute.md` sections 2.4 and 3 (`address`), source manifests (`manifest`), epoch indexes and the epoch rule that picks a span's manifest (`epochs`, section 5.4), and the request, tile, and source id bytes that cross the module ABI (`module_io`), all on a dependency-free SHA-256 (`sha256`).
-- **Time scales.** UTC milliseconds to seconds of Barycentric Dynamical Time since J2000 and back (`timescale`), with a built-in leap second table through 2017-01-01 that must be extended when a new leap second is announced.
+- **Universe time.** Wall-clock milliseconds to seconds since the origin and back (`clock`), exact in the round trip within `2^51` ms of the origin. Every registry's epoch is 0, the origin.
 - **Hub container.** Decoding of the container the hub stores per chunk, with every table entry bounds checked. The hub's layer ids are read past and dropped.
 - **C ABI.** `gx_format_version`, `gx_validate`, `gx_error_name`, `gx_section_address`, `gx_manifest_validate`, `gx_epochs_validate`, `gx_epochs_manifest`, and `gx_frame_record_agrees`, exported from a native shared library so a .NET hub or a compiler in any language can call the validator and compute addresses.
 - **WebAssembly build.** The same crate for the browser renderer and sandboxed compilers.
@@ -84,7 +84,7 @@ crates/gx-core/      the core library: rlib, C ABI cdylib, and WebAssembly expor
   src/frame_record.rs frame records (matter-format.md section 11): encode,
                      decode, validate, and agreement with the registry
   src/module_io.rs   module request, tile, and source id bytes
-  src/timescale.rs   UTC milliseconds to TDB seconds since J2000 and back
+  src/clock.rs       wall-clock milliseconds to seconds since the origin and back
   src/container.rs   hub container: decode a chunk of matter sections or of
                      registries, and encode one for tests
   src/validate.rs    top-level validator: matter, registry, surface tile, or
@@ -154,8 +154,6 @@ conformance/         conformance vectors any implementation must pass
                      code 1051 to 1057, and layer-aware cases (1058, 1059)
   module-overlay/    example overlay module cases: empty answers, overlay
                      tiles of frame 7, and another frame's empty tile
-  timescale/         UTC to TDB cases with bit patterns, and the inverse
-                     inside a leap second
 include/gx_core.h    hand-written C header for the C ABI
 include/gx_module_host.h  hand-written C header for the module host's C ABI
 tools/abi-check/     C program that links the shared library through the header
@@ -179,7 +177,7 @@ The native build (`cargo build -p gx-core --release`) produces `target/release/l
 
 - **C and C++.** Include `gx_core.h` and link `-lgx_core`. `tools/abi-check/abi_check.c` is a complete caller; `scripts/ci.sh` builds it with the system `cc` and runs it against the conformance vectors.
 - **.NET.** P/Invoke the same symbols from `libgx_core`: `size_t` maps to `nuint`, `uint8_t*` and `char*` to `byte*` or `byte[]`, and the return value to `int`.
-- **WebAssembly.** `wasm-pack build crates/gx-core --target web` produces a package with these exports: `format_version()`, `validate(key, bytes)`, which throws an `Error` with message `CODE: REASON`, `decode_chunk_mass(key, bytes)`, the total mass in kilograms of every section in a hub container, `section_address(module, manifest, origin_utc_ms, span_seconds, span_index, key)`, the address as lowercase hex (the integers are `BigInt`, `manifest` may be `undefined`), `manifest_validate(bytes)`, `epochs_validate(bytes)`, `epochs_manifest(bytes, span_seconds, span_index)`, the manifest hash as lowercase hex or `undefined` when the epoch is not listed, `utc_ms_to_tdb_seconds(utc_ms)`, and `tdb_seconds_to_utc_ms(tdb)`. The C ABI symbols are exported from the WebAssembly module too.
+- **WebAssembly.** `wasm-pack build crates/gx-core --target web` produces a package with these exports: `format_version()`, `validate(key, bytes)`, which throws an `Error` with message `CODE: REASON`, `decode_chunk_mass(key, bytes)`, the total mass in kilograms of every section in a hub container, `section_address(module, manifest, origin_utc_ms, span_seconds, span_index, key)`, the address as lowercase hex (the integers are `BigInt`, `manifest` may be `undefined`), `manifest_validate(bytes)`, `epochs_validate(bytes)`, `epochs_manifest(bytes, span_seconds, span_index)`, the manifest hash as lowercase hex or `undefined` when the epoch is not listed, `universe_seconds(wall_ms, origin_ms)`, seconds since the origin (the integers are `BigInt`), and `wall_ms(t, origin_ms)`, the wall-clock milliseconds as a `BigInt`. The C ABI symbols are exported from the WebAssembly module too.
 
 ### The module host's C ABI
 

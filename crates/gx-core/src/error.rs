@@ -245,9 +245,9 @@ pub mod codes {
         /// More frames than a `u32` `frame_count` can hold were given to the Rust
         /// constructor. Reachable only through the Rust API.
         REGISTRY_TOO_MANY_FRAMES = 608;
-        /// A registry with `frame_count` 0 has an `epoch` other than 0
-        /// (section 5.3).
-        REGISTRY_EMPTY_EPOCH_NONZERO = 609;
+        /// A registry has an `epoch` other than 0: the epoch must be 0, the
+        /// origin (section 5). Negative zero counts as 0.
+        REGISTRY_EPOCH_NONZERO = 609;
         /// Registry `format_version` is 1, retired with format version 2
         /// (section 9): its 144-byte records are no longer read.
         REGISTRY_VERSION_RETIRED = 610;
@@ -303,8 +303,10 @@ pub mod codes {
         // 650 to 699: the union of a build's registries (section 5.2). Not byte
         // rules of one registry.
 
-        /// Two registries in the union that declare frames have different
-        /// `epoch` bit patterns.
+        /// Retired: two registries in the union had different `epoch` bit
+        /// patterns. Every registry's epoch is now 0 (609), so the union no
+        /// longer compares epochs and nothing returns this code. Kept so the
+        /// number is never reused.
         UNION_EPOCH_MISMATCH = 651;
         /// A `frame_id` is declared by more than one registry in the union.
         UNION_DUPLICATE_ID = 652;

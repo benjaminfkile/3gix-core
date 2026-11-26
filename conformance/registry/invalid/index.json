@@ -14,6 +14,7 @@
     "607-length-long.bin": 607,
     "607-length-short.bin": 607,
     "609-empty-epoch-nonzero.bin": 609,
+    "609-epoch-nonzero.bin": 609,
     "610-version-1-registry.bin": 610,
     "611-record-reserved-nonzero.bin": 611,
     "612-records-not-sorted.bin": 612,

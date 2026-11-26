@@ -80,7 +80,7 @@ fn scenario_1() -> FrameSystem {
     ])
 }
 
-/// Integrates scenario 1 for one Julian century with `steps_per_orbit`
+/// Integrates scenario 1 for one century of 36 525 days with `steps_per_orbit`
 /// fixed steps per orbit and returns the fitted rate of the periapsis
 /// angle in arcseconds per century. At every periapsis passage (the
 /// radial velocity turning from negative to positive) the in-plane angle of the
