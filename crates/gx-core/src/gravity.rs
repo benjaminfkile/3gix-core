@@ -362,7 +362,7 @@ mod tests {
         // A massless frame around a mass at rest: the correction is the
         // harmonic-gauge test-particle form
         // mu / (r^3 c^2) * [ (4 mu / r - v^2) r + 4 (r . v) v ].
-        let m = 2.0e30;
+        let m = 2.7e30;
         let mu = G * m;
         let r = Vec3::new(4.0e10, 3.0e10, 1.0e9);
         let v = Vec3::new(-2.0e4, 3.5e4, 1.0e3);
@@ -380,14 +380,14 @@ mod tests {
 
     #[test]
     fn oblateness_force_and_reaction() {
-        let m = 6.0e24;
+        let m = 3.4e24;
         let mut oblate = body(Vec3::zero(), Vec3::zero(), m);
         oblate.j2 = 1.0e-3;
-        oblate.reference_radius = 6.4e6;
+        oblate.reference_radius = 8.3e6;
         // In the xy plane the extra pull is inward and equals
         // 3/2 j2 mu R^2 / r^4; on the z axis it is outward with twice that.
-        let r = 7.0e6;
-        let k = 1.5 * 1.0e-3 * G * m * 6.4e6 * 6.4e6 / (r * r * r * r);
+        let r = 9.1e6;
+        let k = 1.5 * 1.0e-3 * G * m * 8.3e6 * 8.3e6 / (r * r * r * r);
         let in_xy =
             oblateness_accelerations(&[oblate, body(Vec3::new(r, 0.0, 0.0), Vec3::zero(), 0.0)]);
         assert!((in_xy[1] - Vec3::new(-k, 0.0, 0.0)).length() < 1e-12 * k);

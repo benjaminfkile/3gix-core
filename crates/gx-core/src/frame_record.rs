@@ -324,11 +324,11 @@ mod tests {
             parent_frame_id: parent,
             root_extent: Meters::new(2.0e7),
             max_depth: 12,
-            mass: Kilograms::new(6.0e24),
+            mass: Kilograms::new(3.4e24),
             position: Vec3::new(1.0, 2.0, 3.0),
             velocity: Vec3::new(4.0, 5.0, 6.0),
             orientation: Quat::new(0.0, 0.0, 0.0, 1.0),
-            angular_velocity: Vec3::new(0.0, 0.0, 7.0e-5),
+            angular_velocity: Vec3::new(0.0, 0.0, 2.2e-4),
             j2,
             reference_radius: Meters::new(radius),
             principal_moments: moments,
@@ -336,7 +336,7 @@ mod tests {
     }
 
     fn sample() -> Frame {
-        frame(1, 1.0e-3, 6.0e6, Vec3::new(8.0e37, 8.0e37, 8.1e37))
+        frame(1, 1.0e-3, 8.3e6, Vec3::new(8.0e37, 8.0e37, 8.1e37))
     }
 
     #[test]
@@ -350,9 +350,9 @@ mod tests {
         assert_eq!(u64_at(&b, 16), 1);
         assert_eq!(f64_at(&b, 24), 2.0e7);
         assert_eq!(b[32], 12);
-        assert_eq!(f64_at(&b, 40), 6.0e24);
+        assert_eq!(f64_at(&b, 40), 3.4e24);
         assert_eq!(f64_at(&b, 48), 1.0e-3);
-        assert_eq!(f64_at(&b, 56), 6.0e6);
+        assert_eq!(f64_at(&b, 56), 8.3e6);
         assert_eq!(f64_at(&b, 80), 8.1e37);
         assert_eq!(decode(&b), Ok(r));
         assert_eq!(validate(5, &b), Ok(()));
@@ -418,10 +418,10 @@ mod tests {
             (Field::ParentFrameId, &|r| r.parent_frame_id = 2),
             (Field::RootExtent, &|r| r.root_extent = Meters::new(2.1e7)),
             (Field::MaxDepth, &|r| r.max_depth = 11),
-            (Field::Mass, &|r| r.mass = Kilograms::new(6.1e24)),
+            (Field::Mass, &|r| r.mass = Kilograms::new(3.5e24)),
             (Field::J2, &|r| r.j2 = 2.0e-3),
             (Field::ReferenceRadius, &|r| {
-                r.reference_radius = Meters::new(6.1e6)
+                r.reference_radius = Meters::new(8.4e6)
             }),
             (Field::PrincipalMoments, &|r| r.principal_moments.z = 8.2e37),
         ];

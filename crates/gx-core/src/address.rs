@@ -410,9 +410,9 @@ mod tests {
     fn preimage_layout() {
         let m = [0x11u8; 32];
         let s = [0x22u8; 32];
-        let k = key("4-12-1024-2048-3071");
+        let k = key("23-12-1024-2048-3071");
         let p = address_preimage(&m, Some(&s), -5, 3600, 7, &k);
-        assert_eq!(p.len(), PREIMAGE_FIXED_LEN + 19);
+        assert_eq!(p.len(), PREIMAGE_FIXED_LEN + 20);
         assert_eq!(&p[0..4], b"3GXA");
         assert_eq!(&p[4..6], &[1, 0]);
         assert_eq!(&p[6..38], &m);
@@ -420,8 +420,8 @@ mod tests {
         assert_eq!(&p[70..78], &(-5i64).to_le_bytes());
         assert_eq!(&p[78..86], &3600u64.to_le_bytes());
         assert_eq!(&p[86..94], &7u64.to_le_bytes());
-        assert_eq!(&p[94..98], &19u32.to_le_bytes());
-        assert_eq!(&p[98..], b"4-12-1024-2048-3071");
+        assert_eq!(&p[94..98], &20u32.to_le_bytes());
+        assert_eq!(&p[98..], b"23-12-1024-2048-3071");
 
         let none = address_preimage(&m, None, 0, 0, 0, &ChunkKey::Registry);
         assert!(none[38..70].iter().all(|&b| b == 0));

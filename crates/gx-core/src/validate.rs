@@ -148,7 +148,7 @@ mod tests {
         let b = frame_record::encode(&frame_record::FrameRecord::empty(3));
         assert_eq!(validate("frame-3", &b), Ok(()));
         assert_eq!(
-            validate("frame-4", &b).unwrap_err().code,
+            validate("frame-43", &b).unwrap_err().code,
             codes::FRAME_RECORD_ID_MISMATCH
         );
         assert_eq!(
@@ -201,7 +201,7 @@ mod tests {
         let rec = frame_record::encode(&frame_record::FrameRecord::empty(3));
         assert_eq!(validate_for_layer("frame-3", &rec, true), Ok(()));
         assert_eq!(
-            validate_for_layer("frame-4", &rec, true).unwrap_err().code,
+            validate_for_layer("frame-43", &rec, true).unwrap_err().code,
             codes::FRAME_RECORD_ID_MISMATCH
         );
         assert_eq!(

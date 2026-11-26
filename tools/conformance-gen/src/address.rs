@@ -86,7 +86,7 @@ fn cases() -> Vec<Case> {
             None,
             0,
             0,
-            "4-12-1024-2048-3071",
+            "23-12-1024-2048-3071",
         ),
         case(
             "depth-12-with-manifest-uses-origin",
@@ -95,7 +95,7 @@ fn cases() -> Vec<Case> {
             Some(ORIGIN),
             0,
             0,
-            "4-12-1024-2048-3071",
+            "23-12-1024-2048-3071",
         ),
         case(
             "depth-31-largest-key",

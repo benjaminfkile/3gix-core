@@ -64,7 +64,7 @@ fn valid() -> Vec<File> {
         ("root", FrameRecord::from_registry_frame(&fs[0]), 0),
         ("moments", FrameRecord::from_registry_frame(&fs[1]), 0),
         ("j2", FrameRecord::from_registry_frame(&fs[2]), 0),
-        ("empty", FrameRecord::empty(4), -1),
+        ("empty", FrameRecord::empty(43), -1),
         ("disagrees-mass", mass, -5),
     ];
     let mut index = BTreeMap::new();

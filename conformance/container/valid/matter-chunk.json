@@ -1,8 +1,8 @@
 {
   "composite": {
     "mass": {
-      "bits": "0x43dc3f0473467a70",
-      "decimal": "8.141401798979731e18"
+      "bits": "0x43eece20811d8b3d",
+      "decimal": "1.775797924207014e19"
     },
     "occupancy_sum": {
       "bits": "0x40ac34b79c5c8000",
@@ -10,25 +10,25 @@
     },
     "resolution": 16
   },
-  "key": "4-5-17-3-30",
+  "key": "11-5-17-3-30",
   "mass_sum": {
-    "bits": "0x43dc3f0473a85e98",
-    "decimal": "8.141401805549101e18"
+    "bits": "0x43eece2081884d99",
+    "decimal": "1.775797925639912e19"
   },
   "section_count": 2,
   "sections": [
     {
       "mass": {
-        "bits": "0x43c6349bdf11a29f",
-        "decimal": "3.2001502999985024e18"
+        "bits": "0x43d8379e45ac5e42",
+        "decimal": "6.980149610844588e18"
       },
       "resolution": 2,
       "source": "matter/valid/res2-shared-cell.bin"
     },
     {
       "mass": {
-        "bits": "0x43d124b6841f8d49",
-        "decimal": "4.941251505550599e18"
+        "bits": "0x43e2b2515eb21e78",
+        "decimal": "1.0777829645554532e19"
       },
       "resolution": 16,
       "source": "matter/valid/res16-zstd.bin"

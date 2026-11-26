@@ -55,10 +55,10 @@ pub(crate) fn registry() -> Registry {
     oblate.principal_moments = Vec3::new(4.41e37, 4.41e37, 4.43e37);
     oblate.orientation = Quat::new(0.28, 0.0, 0.0, 0.96);
     oblate.angular_velocity = Vec3::new(0.0, 0.0, 6.1e-5);
-    let companion = frame(4, 3, 5.6e22, [2.9e8, 0.0, 0.0], [0.0, 9.7e2, 30.0]);
-    let probe = frame(5, 4, 0.0, [0.0, 2.0e6, 0.0], [-1.37e3, 0.0, 0.0]);
+    let companion = frame(41, 3, 5.6e22, [2.9e8, 0.0, 0.0], [0.0, 9.7e2, 30.0]);
+    let probe = frame(5, 41, 0.0, [0.0, 2.0e6, 0.0], [-1.37e3, 0.0, 0.0]);
     let mut triaxial = frame(6, 1, 3.0e20, [0.0, -4.0e11, 1.0e9], [2.12e4, 0.0, 0.0]);
-    triaxial.principal_moments = Vec3::new(1.0e30, 1.2e30, 1.5e30);
+    triaxial.principal_moments = Vec3::new(1.0e30, 1.3e30, 1.5e30);
     triaxial.orientation = Quat::new(0.36, 0.48, 0.0, 0.8);
     triaxial.angular_velocity = Vec3::new(1.0e-5, 2.0e-6, 3.0e-4);
     let frames = vec![

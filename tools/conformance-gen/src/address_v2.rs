@@ -312,7 +312,7 @@ pub fn files() -> Vec<File> {
         no_inputs.address_json("1-0-0-0-0"),
         one_layer.address_json("1-0-0-0-0"),
         one_frames.address_json("registry"),
-        both_30.address_json("4-12-1024-2048-3071"),
+        both_30.address_json("23-12-1024-2048-3071"),
         both_30.address_json("frame-3"),
         nested.address_json("2-0-0-0-0"),
     ];

@@ -159,7 +159,7 @@ fn valid_vectors_decode_and_match() {
 
 #[test]
 fn zstd_twin_matches_raw() {
-    let key = parse_cell("4-5-17-3-30");
+    let key = parse_cell("11-5-17-3-30");
     let raw = std::fs::read(root().join("valid/res16-raw.bin")).unwrap();
     let packed = std::fs::read(root().join("valid/res16-zstd.bin")).unwrap();
     assert_ne!(raw, packed);
