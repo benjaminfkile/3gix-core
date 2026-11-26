@@ -2,8 +2,8 @@
 # Full local CI: toolchain versions, format, lint, tests, conformance vector
 # regeneration, WebAssembly build and export check, the WebAssembly build run
 # under Node against the native conformance vectors, headless GPU compute
-# probe, vocabulary lint, native shared library builds (the core library and
-# the module host), the C ABI check program, and the module determinism
+# probe, vocabulary lint (banned words and banned numbers) and its own test,
+# native shared library builds (the core library and the module host), the C ABI check program, and the module determinism
 # harness: the example modules (version 1, the frame module, the overlay
 # module, and version 2)
 # built for wasm32 and run natively through gx-module-host and under Node.
@@ -81,8 +81,11 @@ wasm-opt -O2 target/wasm-pkg/gx_core_bg.wasm -o target/wasm-pkg/gx_core_bg.opt.w
 step "8. gpu-probe"
 cargo run -p gpu-probe --release
 
-step "9. vocab-lint"
+step "9. vocab-lint, banned words and banned numbers"
 sh scripts/vocab-lint.sh
+
+step "9b. vocab-lint finds a banned number and honors only a measured reference in tests/"
+sh scripts/vocab-lint-test.sh
 
 step "10. native shared library"
 cargo build -p gx-core --release
@@ -103,7 +106,7 @@ LD_LIBRARY_PATH=target/release target/abi-check/abi_check \
     conformance/registry/invalid/610-version-1-registry.bin \
     conformance/manifest/valid/three.bin \
     conformance/manifest/invalid/906-not-sorted.bin \
-    conformance/epochs/valid/daily.bin \
+    conformance/epochs/valid/regular.bin \
     conformance/epochs/invalid/1007-not-ascending.bin \
     conformance/frame-record/valid/registry.bin \
     conformance/frame-record/valid/j2.bin \

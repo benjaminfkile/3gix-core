@@ -406,8 +406,8 @@ mod tests {
     fn tile(key: SurfaceKey) -> SurfaceTile {
         SurfaceTile {
             key,
-            radius_xy: 6_378_137.0,
-            radius_z: 6_356_752.3,
+            radius_xy: 5_712_400.0,
+            radius_z: 5_689_100.0,
             height_floor: -10.0,
             heights: (0..HEIGHT_SIDE * HEIGHT_SIDE)
                 .map(|i| (i % 97) as f32)
@@ -417,7 +417,7 @@ mod tests {
                 .collect(),
             albedo: vec![[76, 71, 64]; VERTEX_COUNT],
             roughness: vec![230; VERTEX_COUNT],
-            temperature: vec![288.0; VERTEX_COUNT],
+            temperature: vec![251.0; VERTEX_COUNT],
         }
     }
 
@@ -461,7 +461,8 @@ mod tests {
         );
         // A full tile set through `radius_xy` and `radius_z` gives the bytes
         // the same tile gave before the rename: their FNV-1a 64 hash and
-        // length, taken from the encoder as it was then.
+        // length, taken from the encoder as it was then (with this test's
+        // made-up radii and temperature).
         let key = SurfaceKey::new(4, 0, 2, 1, 3).unwrap();
         let t = tile(key);
         let bytes = encode(&t, Compression::None);
@@ -472,7 +473,7 @@ mod tests {
             h ^= u64::from(b);
             h = h.wrapping_mul(0x0100_0000_01b3);
         }
-        assert_eq!((h, bytes.len()), (0x2ec0_40c7_fc78_7b97, 56_720));
+        assert_eq!((h, bytes.len()), (0xebbf_5f9c_472a_e7c7, 56_720));
     }
 
     #[test]
@@ -502,7 +503,7 @@ mod tests {
         );
         // The floor: finite, above minus the smaller radius, and no height
         // or parent height below it.
-        for bad in [f64::NAN, f64::NEG_INFINITY, -6_356_752.3, -7.0e6] {
+        for bad in [f64::NAN, f64::NEG_INFINITY, -5_689_100.0, -7.0e6] {
             let mut t = tile(key);
             t.height_floor = bad;
             assert_eq!(
@@ -549,7 +550,7 @@ mod tests {
     fn shared_vertices_have_the_same_bits() {
         // Neighbors at one level share an edge; a child's even vertices are
         // its parent's vertices.
-        let (a, c) = (6_378_137.0, 6_356_752.3);
+        let (a, c) = (5_712_400.0, 5_689_100.0);
         let left = SurfaceKey::new(4, 3, 5, 6, 9).unwrap();
         let right = SurfaceKey::new(4, 3, 5, 7, 9).unwrap();
         for j in 0..=TILE_QUADS as i64 {

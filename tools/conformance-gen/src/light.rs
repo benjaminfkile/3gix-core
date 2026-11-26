@@ -18,6 +18,7 @@ use gx_core::registry::{self, FrameTree, Registry};
 use gx_core::units::{Seconds, Vec3};
 use serde_json::{json, Value};
 
+use crate::integrate::UNIT;
 use crate::{number, pretty, File};
 
 fn system(reg: &Registry) -> FrameSystem {
@@ -34,28 +35,28 @@ type LightCase = (&'static str, u64, [f64; 3], f64, f64, f64);
 /// Light cases against the integrator vectors' registry (epoch 0, the origin).
 const LIGHT: [LightCase; 4] = [
     (
-        "companion-thirty-days",
+        "companion-thirty-units",
         4,
-        [1.5e11, 1.0e7, 0.0],
-        30.0 * 86_400.0,
-        86_400.0,
+        [1.13e11, 1.0e7, 0.0],
+        30.0 * UNIT,
+        UNIT,
         3_600.0,
     ),
     (
-        "oblate-one-day",
+        "oblate-one-unit",
         3,
         [-4.0e11, 1.0e11, 0.0],
-        86_400.0,
-        21_600.0,
+        UNIT,
+        0.25 * UNIT,
         900.0,
     ),
     ("clamped", 6, [0.0, 0.0, 0.0], 100.0, 3_600.0, 600.0),
     (
-        "probe-two-days",
+        "probe-two-units",
         5,
         [0.0, 0.0, 0.0],
-        2.0 * 86_400.0,
-        43_200.0,
+        2.0 * UNIT,
+        0.5 * UNIT,
         1_800.0,
     ),
 ];

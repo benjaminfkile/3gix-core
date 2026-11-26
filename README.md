@@ -194,6 +194,6 @@ Each returns 0 on success or a negative `GX_MODULE_ERR_*` code with the reason i
 
 ## Contributing rules
 
-- No domain words anywhere in this repository: nothing from `scripts/vocab-banned.txt`, and no proper noun for any body. `scripts/vocab-lint.sh` enforces the list.
+- No domain words anywhere in this repository: nothing from `scripts/vocab-banned.txt`, no number from `scripts/vocab-numbers.txt` (one body's size, mass, spin, orbit, day, year, or temperature), and no proper noun for any body. Tests use made-up bodies. `scripts/vocab-lint.sh` enforces both lists; `scripts/vocab-lint-test.sh` tests it. The one exception is a test under a `tests/` directory that checks a law against a real measurement made around a real body: its first comment block carries a line starting with the marker `measured-reference:` naming the measurement and why a made-up body would not do, and the lint skips the file and prints its name. The marker anywhere else is a finding. Today `crates/gx-core/tests/laws_measured.rs` is the only such file.
 - No infrastructure identifiers, secrets, hostnames, or LAN addresses in code, history, docs, or CI output. This repository is public.
 - No em or en dashes in any text.

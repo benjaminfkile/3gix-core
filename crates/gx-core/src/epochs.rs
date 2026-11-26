@@ -291,14 +291,14 @@ mod tests {
 
     #[test]
     fn round_trip_and_lookup() {
-        let x = EpochIndex::new(86_400, vec![entry(9, 3), entry(0, 1), entry(4, 2)]).unwrap();
+        let x = EpochIndex::new(72_000, vec![entry(9, 3), entry(0, 1), entry(4, 2)]).unwrap();
         let epochs: Vec<u64> = x.entries().iter().map(|e| e.epoch).collect();
         assert_eq!(epochs, [0, 4, 9]);
         let b = encode(&x);
         assert_eq!(b.len(), HEADER_LEN + 3 * ENTRY_LEN);
         assert_eq!(&b[0..4], b"3GXE");
         assert_eq!(&b[4..8], &[1, 0, 0, 0]);
-        assert_eq!(&b[8..16], &86_400u64.to_le_bytes());
+        assert_eq!(&b[8..16], &72_000u64.to_le_bytes());
         assert_eq!(&b[16..20], &3u32.to_le_bytes());
         assert_eq!(&b[20..28], &0u64.to_le_bytes());
         assert_eq!(&b[28..60], &[1u8; 32]);
@@ -313,21 +313,21 @@ mod tests {
 
     #[test]
     fn epoch_rule() {
-        let x = EpochIndex::new(86_400, vec![entry(0, 1), entry(1, 2)]).unwrap();
-        // One-hour spans: 24 per epoch.
+        let x = EpochIndex::new(72_000, vec![entry(0, 1), entry(1, 2)]).unwrap();
+        // One-hour spans: 20 per epoch.
         assert_eq!(manifest_for_span(&x, 3600, 0).unwrap(), Some([1u8; 32]));
-        assert_eq!(manifest_for_span(&x, 3600, 23).unwrap(), Some([1u8; 32]));
-        assert_eq!(manifest_for_span(&x, 3600, 24).unwrap(), Some([2u8; 32]));
-        assert_eq!(manifest_for_span(&x, 3600, 48).unwrap(), None);
-        assert_eq!(manifest_for_span(&x, 86_400, 1).unwrap(), Some([2u8; 32]));
+        assert_eq!(manifest_for_span(&x, 3600, 19).unwrap(), Some([1u8; 32]));
+        assert_eq!(manifest_for_span(&x, 3600, 20).unwrap(), Some([2u8; 32]));
+        assert_eq!(manifest_for_span(&x, 3600, 40).unwrap(), None);
+        assert_eq!(manifest_for_span(&x, 72_000, 1).unwrap(), Some([2u8; 32]));
         // No overflow at the top of the range.
         let big = EpochIndex::new(u64::MAX, vec![entry(u64::MAX - 1, 7)]).unwrap();
         assert_eq!(epoch_for_span(&big, u64::MAX, u64::MAX).unwrap(), u64::MAX);
-        assert_eq!(epoch_for_span(&x, 3600, u64::MAX).unwrap(), u64::MAX / 24);
+        assert_eq!(epoch_for_span(&x, 3600, u64::MAX).unwrap(), u64::MAX / 20);
         assert_eq!(code(manifest_for_span(&x, 0, 0)), 1009);
         assert_eq!(code(manifest_for_span(&x, 7, 0)), 1010);
-        assert_eq!(code(check_layer(&x, 86_401)), 1010);
-        assert!(check_layer(&x, 86_400).is_ok());
+        assert_eq!(code(check_layer(&x, 72_001)), 1010);
+        assert!(check_layer(&x, 72_000).is_ok());
     }
 
     #[test]

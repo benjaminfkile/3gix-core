@@ -21,8 +21,12 @@ use serde_json::{json, Value};
 
 use crate::{pretty, File};
 
-const DAY: u64 = 86_400;
+/// Epoch length of the `regular` index: twenty spans of `HOUR`, a made-up
+/// length that is no body's day.
+const EPOCH_SPAN: u64 = 72_000;
 const HOUR: u64 = 3_600;
+/// Spans of `HOUR` in one epoch of the `regular` index.
+const PER_EPOCH: u64 = EPOCH_SPAN / HOUR;
 
 fn entry(epoch: u64) -> Entry {
     Entry {
@@ -31,12 +35,12 @@ fn entry(epoch: u64) -> Entry {
     }
 }
 
-/// Daily epochs with a gap at epoch 2 and an entry at the epoch of the
-/// largest hourly span index, deliberately given out of order.
-fn daily() -> EpochIndex {
+/// Epochs of `EPOCH_SPAN` seconds with a gap at epoch 2 and an entry at the
+/// epoch of the largest hourly span index, deliberately given out of order.
+fn regular() -> EpochIndex {
     EpochIndex::new(
-        DAY,
-        vec![entry(3), entry(0), entry(u64::MAX / 24), entry(1)],
+        EPOCH_SPAN,
+        vec![entry(3), entry(0), entry(u64::MAX / PER_EPOCH), entry(1)],
     )
     .expect("fixed indexes are valid")
 }
@@ -44,33 +48,33 @@ fn daily() -> EpochIndex {
 /// The epoch rule cases each valid index is checked against.
 fn cases(name: &str) -> Vec<(u64, u64)> {
     match name {
-        "daily" => vec![
-            // Hourly spans, 24 per epoch: both sides of each boundary.
+        "regular" => vec![
+            // Hourly spans, 20 per epoch: both sides of each boundary.
             (HOUR, 0),
-            (HOUR, 23),
-            (HOUR, 24),
-            (HOUR, 47),
-            (HOUR, 48),
-            (HOUR, 71),
-            (HOUR, 72),
-            (HOUR, 95),
-            (HOUR, 96),
-            // Daily spans: one per epoch.
-            (DAY, 1),
-            (DAY, 2),
-            (DAY, 3),
+            (HOUR, 19),
+            (HOUR, 20),
+            (HOUR, 39),
+            (HOUR, 40),
+            (HOUR, 59),
+            (HOUR, 60),
+            (HOUR, 79),
+            (HOUR, 80),
+            // Spans as long as the epoch: one per epoch.
+            (EPOCH_SPAN, 1),
+            (EPOCH_SPAN, 2),
+            (EPOCH_SPAN, 3),
             // One-second spans across the first boundary.
-            (1, DAY - 1),
-            (1, DAY),
+            (1, EPOCH_SPAN - 1),
+            (1, EPOCH_SPAN),
             // Large span indexes: the product needs more than 64 bits.
             (HOUR, u64::MAX),
-            (HOUR, u64::MAX / 24 * 24),
-            (HOUR, u64::MAX / 24 * 24 - 1),
-            (DAY, u64::MAX),
+            (HOUR, u64::MAX / PER_EPOCH * PER_EPOCH),
+            (HOUR, u64::MAX / PER_EPOCH * PER_EPOCH - 1),
+            (EPOCH_SPAN, u64::MAX),
             // Errors: a zero span and a span that does not divide the epoch.
             (0, 5),
             (7, 5),
-            (DAY * 2, 0),
+            (EPOCH_SPAN * 2, 0),
         ],
         "empty" => vec![(HOUR, 0), (HOUR, u64::MAX), (0, 0), (7_200, 1)],
         "widest" => vec![
@@ -121,7 +125,7 @@ fn summary(name: &str, x: &EpochIndex, bytes: &[u8]) -> Value {
 
 fn valid() -> Vec<File> {
     let sets = [
-        ("daily", daily()),
+        ("regular", regular()),
         ("empty", EpochIndex::new(HOUR, vec![]).expect("valid")),
         (
             "widest",
@@ -145,7 +149,7 @@ fn entry_at(i: usize, field: usize) -> usize {
 }
 
 fn invalid() -> Vec<File> {
-    let base = epochs::encode(&daily());
+    let base = epochs::encode(&regular());
     let mut vectors: Vec<(&str, u16, Vec<u8>)> = Vec::new();
     let mut add = |name: &'static str, code: u16, f: &dyn Fn(&mut Vec<u8>)| {
         let mut b = base.clone();

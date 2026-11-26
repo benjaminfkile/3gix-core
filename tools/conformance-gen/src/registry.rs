@@ -79,13 +79,13 @@ fn root() -> Frame {
         ROOT_PARENT,
         1.2e13,
         14,
-        1.989e30,
+        2.7e30,
         [0.0; 3],
         [0.0; 3],
         [0.0, 0.0, 0.6, 0.8],
-        [0.0, 0.0, 2.865e-6],
+        [0.0, 0.0, 3.41e-6],
     );
-    shaped(f, 2.0e-7, 6.957e8, [5.7e46, 5.7e46, 5.8e46])
+    shaped(f, 3.3e-7, 8.13e8, [1.24e47, 1.24e47, 1.26e47])
 }
 
 /// The four children of the root, in near circular motion around it.
@@ -96,22 +96,22 @@ fn children() -> [Frame; 4] {
             1,
             2.0e7,
             18,
-            3.301e23,
-            [5.79e10, 0.0, 0.0],
-            [0.0, 4.736e4, 0.0],
+            2.3e23,
+            [4.7e10, 0.0, 0.0],
+            [0.0, 6.19e4, 0.0],
             [0.28, 0.0, 0.0, 0.96],
-            [0.0, 0.0, 1.24e-6],
+            [0.0, 0.0, 1.7e-6],
         ),
         frame(
             20,
             1,
             4.0e7,
             19,
-            4.867e24,
-            [-7.6e10, 7.8e10, 0.0],
-            [-2.47e4, -2.40e4, 1.1e2],
+            3.6e24,
+            [-8.3e10, 6.9e10, 0.0],
+            [-2.61e4, -3.14e4, 1.3e2],
             [0.0, 0.6, 0.0, 0.8],
-            [0.0, 0.0, -2.99e-7],
+            [0.0, 0.0, -4.3e-7],
         ),
         shaped(
             frame(
@@ -119,26 +119,26 @@ fn children() -> [Frame; 4] {
                 1,
                 4.0e8,
                 20,
-                5.972e24,
-                [0.0, -1.496e11, 2.0e6],
-                [2.978e4, 0.0, 0.0],
+                4.1e24,
+                [0.0, -1.13e11, 1.7e6],
+                [3.99e4, 0.0, 0.0],
                 [0.48, 0.6, 0.0, 0.64],
-                [0.0, 0.0, 7.292e-5],
+                [0.0, 0.0, 6.1e-5],
             ),
-            1.0826e-3,
-            6.378137e6,
-            [8.008e37, 8.008e37, 8.034e37],
+            1.37e-3,
+            5.71e6,
+            [4.41e37, 4.41e37, 4.43e37],
         ),
         frame(
             40,
             1,
             2.0e7,
             19,
-            6.417e23,
-            [1.6e11, 1.6e11, -4.0e9],
-            [-1.7e4, 1.7e4, 0.0],
+            5.3e23,
+            [1.4e11, 1.75e11, -3.7e9],
+            [-1.77e4, 2.21e4, 0.0],
             [0.5, 0.5, 0.5, 0.5],
-            [0.0, 0.0, 7.088e-5],
+            [0.0, 0.0, 5.9e-5],
         ),
     ]
 }
@@ -150,13 +150,13 @@ fn grandchild() -> Frame {
         30,
         8.0e6,
         17,
-        7.342e22,
-        [3.844e8, 0.0, 0.0],
-        [0.0, 1.022e3, 0.0],
+        5.6e22,
+        [2.9e8, 0.0, 0.0],
+        [0.0, 9.71e2, 0.0],
         [0.0, 0.0, -0.28, 0.96],
-        [0.0, 0.0, 2.6617e-6],
+        [0.0, 0.0, 3.3e-6],
     );
-    shaped(f, 2.03e-4, 1.738e6, [8.7e34, 8.8e34, 8.73e34])
+    shaped(f, 1.7e-4, 1.42e6, [4.39e34, 4.45e34, 4.41e34])
 }
 
 /// A small, distant child of the root, unrelated to the others.
@@ -166,11 +166,11 @@ fn far_child() -> Frame {
         1,
         2.0e6,
         16,
-        9.4e20,
-        [-4.1e11, 0.0, 1.0e10],
-        [0.0, -1.79e4, 0.0],
+        7.7e20,
+        [-3.6e11, 0.0, 1.0e10],
+        [0.0, -2.24e4, 0.0],
         [0.0, 0.8, 0.0, 0.6],
-        [0.0, 0.0, 1.9e-5],
+        [0.0, 0.0, 2.3e-5],
     )
 }
 
@@ -356,7 +356,7 @@ fn invalid() -> Vec<File> {
         put_f64(b, rec(4, 32), f64::INFINITY)
     });
     add("mass-negative", codes::FRAME_MASS_NEGATIVE, &|b| {
-        put_f64(b, rec(4, 32), -7.342e22)
+        put_f64(b, rec(4, 32), -5.6e22)
     });
     add("position-nan", codes::FRAME_POSITION_NOT_FINITE, &|b| {
         put_f64(b, rec(5, 56), f64::NAN)
@@ -428,12 +428,12 @@ fn invalid() -> Vec<File> {
     add(
         "reference-radius-negative-with-j2",
         codes::FRAME_REFERENCE_RADIUS_NOT_POSITIVE,
-        &|b| put_f64(b, rec(3, 152), -6.378137e6),
+        &|b| put_f64(b, rec(3, 152), -5.71e6),
     );
     add(
         "reference-radius-without-j2",
         codes::FRAME_REFERENCE_RADIUS_NONZERO,
-        &|b| put_f64(b, rec(1, 152), 2.44e6),
+        &|b| put_f64(b, rec(1, 152), 1.93e6),
     );
     add("moments-nan", codes::FRAME_MOMENTS_NOT_FINITE, &|b| {
         put_f64(b, rec(3, 168), f64::NAN)
@@ -453,7 +453,7 @@ fn invalid() -> Vec<File> {
         },
     );
     add("moments-triangle", codes::FRAME_MOMENTS_TRIANGLE, &|b| {
-        put_f64(b, rec(3, 176), 1.7e38)
+        put_f64(b, rec(3, 176), 9.3e37)
     });
 
     let mut index = BTreeMap::new();

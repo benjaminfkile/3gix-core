@@ -88,7 +88,7 @@ const CASES: [Case; 10] = [
     Case {
         name: "06-origin",
         origin_utc_ms: 1_763_130_000_000,
-        span_seconds: 86_400,
+        span_seconds: 72_000,
         span_index: 3,
         key: "3-10-1023-0-512",
         params: params(1.3e7, 3.3e3, 250.0),

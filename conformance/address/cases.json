@@ -121,27 +121,27 @@
       "uses_origin": true
     },
     {
-      "address": "140d7f3a2d0e214eac486de10dd897b46cdead41e7225f5f0b316a9d987e4e8e",
+      "address": "f59b496247c96bab1f3cb00a2444832c65f870f04424eee6cce9b1b97c35ac5c",
       "key": "31-8-255-0-128",
       "manifest": "7ee14e93d859569ee34dc6dda827eb3e6ca506bf54ad35a18a93a9be7ddca9be",
       "module": "44d9032ff40ad789b264a6ee0de404f5cd3fd627231d7324ac14c48e5957a0e4",
-      "name": "depth-8-daily-span-uses-origin",
+      "name": "depth-8-long-span-uses-origin",
       "origin_utc_ms": "1763130000000",
-      "preimage": "33475841010044d9032ff40ad789b264a6ee0de404f5cd3fd627231d7324ac14c48e5957a0e47ee14e93d859569ee34dc6dda827eb3e6ca506bf54ad35a18a93a9be7ddca9be80c2bc829a010000805101000000000039300000000000000e00000033312d382d3235352d302d313238",
+      "preimage": "33475841010044d9032ff40ad789b264a6ee0de404f5cd3fd627231d7324ac14c48e5957a0e47ee14e93d859569ee34dc6dda827eb3e6ca506bf54ad35a18a93a9be7ddca9be80c2bc829a010000401901000000000039300000000000000e00000033312d382d3235352d302d313238",
       "span_index": "12345",
-      "span_seconds": "86400",
+      "span_seconds": "72000",
       "uses_origin": true
     },
     {
-      "address": "6f1088b5e18bb4ee1cd1019405259f2e3bb11f0df7443a7fc5c03856d111f7b0",
+      "address": "1f87f176853f5d5f7fe19e1567c55e809f635fd9bb0d22542e43052a377dea59",
       "key": "31-8-255-0-128",
       "manifest": "7ee14e93d859569ee34dc6dda827eb3e6ca506bf54ad35a18a93a9be7ddca9be",
       "module": "44d9032ff40ad789b264a6ee0de404f5cd3fd627231d7324ac14c48e5957a0e4",
-      "name": "depth-8-daily-span-static",
+      "name": "depth-8-long-span-static",
       "origin_utc_ms": "0",
-      "preimage": "33475841010044d9032ff40ad789b264a6ee0de404f5cd3fd627231d7324ac14c48e5957a0e47ee14e93d859569ee34dc6dda827eb3e6ca506bf54ad35a18a93a9be7ddca9be0000000000000000805101000000000039300000000000000e00000033312d382d3235352d302d313238",
+      "preimage": "33475841010044d9032ff40ad789b264a6ee0de404f5cd3fd627231d7324ac14c48e5957a0e47ee14e93d859569ee34dc6dda827eb3e6ca506bf54ad35a18a93a9be7ddca9be0000000000000000401901000000000039300000000000000e00000033312d382d3235352d302d313238",
       "span_index": "12345",
-      "span_seconds": "86400",
+      "span_seconds": "72000",
       "uses_origin": false
     },
     {

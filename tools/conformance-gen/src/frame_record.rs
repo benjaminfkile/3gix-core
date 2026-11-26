@@ -33,10 +33,10 @@ fn frame(id: u64, parent: u64, j2: f64, radius: f64, moments: Vec3) -> Frame {
         root_extent: Meters::new(1.0e7 * id as f64),
         max_depth: 10 + id as u8,
         mass: Kilograms::new(2.5e23 * id as f64),
-        position: Vec3::new(at(1.5e11), at(-2.0e9), at(3.0e8)),
-        velocity: Vec3::new(at(1.0e3), at(2.9e4), at(-5.0)),
+        position: Vec3::new(at(1.13e11), at(-2.0e9), at(3.0e8)),
+        velocity: Vec3::new(at(1.0e3), at(3.99e4), at(-5.0)),
         orientation: Quat::new(0.0, 0.0, 0.0, 1.0),
-        angular_velocity: Vec3::new(0.0, 0.0, 7.0e-5),
+        angular_velocity: Vec3::new(0.0, 0.0, 6.1e-5),
         j2,
         reference_radius: Meters::new(radius),
         principal_moments: moments,
@@ -47,13 +47,7 @@ fn frames() -> Vec<Frame> {
     vec![
         frame(1, ROOT_PARENT, 0.0, 0.0, Vec3::new(0.0, 0.0, 0.0)),
         frame(2, 1, 0.0, 0.0, Vec3::new(4.0e35, 4.5e35, 5.0e35)),
-        frame(
-            3,
-            1,
-            1.0826e-3,
-            6.378e6,
-            Vec3::new(8.01e37, 8.01e37, 8.04e37),
-        ),
+        frame(3, 1, 1.37e-3, 5.71e6, Vec3::new(4.41e37, 4.41e37, 4.43e37)),
     ]
 }
 

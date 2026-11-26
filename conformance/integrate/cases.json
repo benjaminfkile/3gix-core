@@ -5,11 +5,11 @@
         "bits": "0x4082c00000000000",
         "decimal": "6e2"
       },
-      "name": "one-day",
-      "state": "one-day.bin",
+      "name": "one-unit",
+      "state": "one-unit.bin",
       "to_seconds": {
-        "bits": "0x40f5180000000000",
-        "decimal": "8.64e4"
+        "bits": "0x40f2750000000000",
+        "decimal": "7.56e4"
       }
     },
     {
@@ -17,11 +17,11 @@
         "bits": "0x40ac200000000000",
         "decimal": "3.6e3"
       },
-      "name": "thirty-days",
-      "state": "thirty-days.bin",
+      "name": "thirty-units",
+      "state": "thirty-units.bin",
       "to_seconds": {
-        "bits": "0x4143c68000000000",
-        "decimal": "2.592e6"
+        "bits": "0x41414db000000000",
+        "decimal": "2.268e6"
       }
     },
     {
@@ -29,11 +29,11 @@
         "bits": "0x408c200000000000",
         "decimal": "9e2"
       },
-      "name": "back-half-day",
-      "state": "back-half-day.bin",
+      "name": "back-half-unit",
+      "state": "back-half-unit.bin",
       "to_seconds": {
-        "bits": "0xc0e5180000000000",
-        "decimal": "-4.32e4"
+        "bits": "0xc0e2750000000000",
+        "decimal": "-3.78e4"
       }
     }
   ],

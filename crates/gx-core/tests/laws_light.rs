@@ -1,6 +1,7 @@
 //! Tests for light time (`space-model.md` section 6.4): a frame at rest
-//! 1.496e11 m away, and a frame in a circular orbit drawn at its
-//! retarded position, with the tolerances the task sets.
+//! 1.13e11 m away, and a frame in a circular orbit drawn at its
+//! retarded position, with the tolerances the task sets. Every body is
+//! made up.
 
 use gx_core::frames::FrameSystem;
 use gx_core::gravity::{C, G};
@@ -10,8 +11,11 @@ use gx_core::light::{retarded_emitter, retarded_state, retarded_time};
 use gx_core::registry::{Frame, FrameTree, Registry, ROOT_PARENT};
 use gx_core::units::{Kilograms, Meters, Quat, Seconds, Vec3};
 
-/// The test distance, meters.
-const D: f64 = 149_597_870_700.0;
+/// The test distance, meters: a made-up value.
+const D: f64 = 1.13e11;
+
+/// A made-up unit of time in seconds for the orbit samples: 21 hours.
+const UNIT: f64 = 75_600.0;
 
 fn frame(id: u64, parent: u64, mass: f64, position: Vec3, velocity: Vec3) -> Frame {
     Frame {
@@ -44,7 +48,7 @@ fn history(frames: Vec<Frame>, interval: f64, max_step: f64) -> History {
 }
 
 #[test]
-fn a_frame_at_rest_one_unit_away() {
+fn a_frame_at_rest_far_away() {
     let h = history(
         vec![
             frame(1, ROOT_PARENT, 0.0, Vec3::zero(), Vec3::zero()),
@@ -57,16 +61,16 @@ fn a_frame_at_rest_one_unit_away() {
     let l = retarded_time(Vec3::zero(), Seconds::new(t), &h, 2);
     assert!(!l.clamped);
     let delay = t - l.time.value();
-    // D / c = 499.004784 s, which the task rounds to 499.005 s.
+    // D / c = 376.927428 s.
     assert!((delay - D / C).abs() < 1e-6, "delay {delay} s");
-    assert!((delay - 499.005).abs() < 1e-3);
+    assert!((delay - 376.927).abs() < 1e-3);
     let r = retarded_state(Vec3::zero(), Seconds::new(t), &h, 2);
     assert_eq!(r.state.position, Vec3::new(D, 0.0, 0.0));
 }
 
 #[test]
 fn a_frame_in_circular_orbit_is_drawn_where_it_was() {
-    let mass = 1.989e30;
+    let mass = 2.7e30;
     let r = D;
     let mu = G * mass;
     let speed = (mu / r).sqrt();
@@ -87,8 +91,8 @@ fn a_frame_in_circular_orbit_is_drawn_where_it_was() {
     );
     let analytic = |t: f64| Vec3::new(r * (omega * t).cos(), r * (omega * t).sin(), 0.0);
     let observer = Vec3::new(-1.0e11, 2.0e11, 3.0e10);
-    for days in [2.0, 10.0, 30.0] {
-        let t = days * 86_400.0;
+    for units in [2.0, 10.0, 30.0] {
+        let t = units * UNIT;
         // As the renderer does: checkpoints up to now, so each light-time
         // pass integrates at most one interval.
         h.extend_to(Seconds::new(t));
@@ -103,7 +107,7 @@ fn a_frame_in_circular_orbit_is_drawn_where_it_was() {
         let miss = (got.state.position - want).length();
         assert!(
             miss < 1.0,
-            "day {days}: {miss} m from the analytic position"
+            "unit {units}: {miss} m from the analytic position"
         );
         assert!((got.light.time.value() - tr).abs() < 1e-6);
         assert!(got.light.iterations <= 6, "{} passes", got.light.iterations);
