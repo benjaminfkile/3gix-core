@@ -32,8 +32,8 @@ pub const FIXTURE_FRAME_ID: u64 = 7;
 /// Edge of the fixture frame's root cube: 2.0e7 m.
 pub const FIXTURE_ROOT_EXTENT: f64 = 2.0e7;
 
-/// Mass of the fixture frame: 6.0e24 kg.
-pub const FIXTURE_MASS: f64 = 6.0e24;
+/// Mass of the fixture frame: 3.4e24 kg.
+pub const FIXTURE_MASS: f64 = 3.4e24;
 
 /// The one frame this module declares: a root frame at rest with a fixed
 /// extent, mass, `j2`, and principal moments.
@@ -47,9 +47,9 @@ pub fn fixture_frame() -> Frame {
         position: Vec3::new(0.0, 0.0, 0.0),
         velocity: Vec3::new(0.0, 0.0, 0.0),
         orientation: Quat::identity(),
-        angular_velocity: Vec3::new(0.0, 0.0, 7.0e-5),
+        angular_velocity: Vec3::new(0.0, 0.0, 2.2e-4),
         j2: 1.0e-3,
-        reference_radius: Meters::new(6.0e6),
+        reference_radius: Meters::new(8.3e6),
         principal_moments: Vec3::new(8.0e37, 8.0e37, 8.1e37),
     }
 }

@@ -325,8 +325,8 @@ int main(int argc, char** argv) {
     check_address(
         "44d9032ff40ad789b264a6ee0de404f5cd3fd627231d7324ac14c48e5957a0e4",
         "ed73fe4433eb779f192bc73a01e0549e2cbc504b91efae81f97255ef3a8807d1",
-        INT64_C(1763130000000), 0, 0, "4-12-1024-2048-3071",
-        "20feb104121014e8ebcdc8b4962bb1df05e9ba331f8c8817735c40ec666d97a2",
+        INT64_C(1763130000000), 0, 0, "23-12-1024-2048-3071",
+        "74f9d6288d0198e57a78e74d16e9078b7b32219569c6ae2cb7262b5cf5a45bc3",
         "address of case depth-12-with-manifest-uses-origin");
     uint8_t out[32];
     memset(out, 0x7f, sizeof out);

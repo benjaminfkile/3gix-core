@@ -738,27 +738,27 @@ mod tests {
 
     #[test]
     fn parent_and_children() {
-        assert_eq!(cell(4, 0, 0, 0, 0).parent(), None);
-        assert_eq!(cell(4, 3, 5, 2, 7).parent(), Some(cell(4, 2, 2, 1, 3)));
+        assert_eq!(cell(37, 0, 0, 0, 0).parent(), None);
+        assert_eq!(cell(37, 3, 5, 2, 7).parent(), Some(cell(37, 2, 2, 1, 3)));
         let m = (1u32 << 31) - 1;
-        assert_eq!(cell(4, 31, m, 0, m).children(), None);
-        let kids = cell(4, 1, 1, 0, 1).children().unwrap();
+        assert_eq!(cell(37, 31, m, 0, m).children(), None);
+        let kids = cell(37, 1, 1, 0, 1).children().unwrap();
         let expect = [
-            cell(4, 2, 2, 0, 2),
-            cell(4, 2, 3, 0, 2),
-            cell(4, 2, 2, 1, 2),
-            cell(4, 2, 3, 1, 2),
-            cell(4, 2, 2, 0, 3),
-            cell(4, 2, 3, 0, 3),
-            cell(4, 2, 2, 1, 3),
-            cell(4, 2, 3, 1, 3),
+            cell(37, 2, 2, 0, 2),
+            cell(37, 2, 3, 0, 2),
+            cell(37, 2, 2, 1, 2),
+            cell(37, 2, 3, 1, 2),
+            cell(37, 2, 2, 0, 3),
+            cell(37, 2, 3, 0, 3),
+            cell(37, 2, 2, 1, 3),
+            cell(37, 2, 3, 1, 3),
         ];
         assert_eq!(kids, expect);
         for k in kids {
             assert!(k.is_valid());
-            assert_eq!(k.parent(), Some(cell(4, 1, 1, 0, 1)));
+            assert_eq!(k.parent(), Some(cell(37, 1, 1, 0, 1)));
         }
-        let deepest = cell(4, 30, (1 << 30) - 1, 0, 0).children().unwrap();
+        let deepest = cell(37, 30, (1 << 30) - 1, 0, 0).children().unwrap();
         assert!(deepest.iter().all(CellKey::is_valid));
     }
 

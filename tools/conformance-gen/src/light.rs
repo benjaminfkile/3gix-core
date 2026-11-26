@@ -36,7 +36,7 @@ type LightCase = (&'static str, u64, [f64; 3], f64, f64, f64);
 const LIGHT: [LightCase; 4] = [
     (
         "companion-thirty-units",
-        4,
+        41,
         [1.13e11, 1.0e7, 0.0],
         30.0 * UNIT,
         UNIT,

@@ -346,7 +346,7 @@ fn res16_ball() -> Section {
             partly(s, ramp(n / 2.0 - r_samples))
         }
     });
-    build(cell(4, 5, 17, 3, 30), 6.4e6, 16, samples)
+    build(cell(11, 5, 17, 3, 30), 8.3e6, 16, samples)
 }
 
 /// Concentric shells at resolution 64, piecewise constant so it compresses.
@@ -423,7 +423,7 @@ fn res2_shared_cell() -> Section {
         haze(2.0e-4, State::Plasma, 7000.0, 0.4),
     ];
     let key = res16_ball().key();
-    build(key, 6.4e6, 2, Samples::from_samples(list))
+    build(key, 8.3e6, 2, Samples::from_samples(list))
 }
 
 /// A solid ring at resolution 8: a torus about the z axis through the cell

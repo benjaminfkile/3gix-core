@@ -2,11 +2,11 @@
   "cases": {
     "01-registry": {
       "key": "registry",
-      "sha256": "6bcd3e81e90f3c8d1cf87ac6e2597afd62cd5b125a3b1a3109d27ec127b75d3b"
+      "sha256": "474eb2bd259b73d2892b2aa7aa1b6129e1a39162a43cd9584820e4c59698f0bd"
     },
     "02-declared-frame": {
       "key": "frame-7",
-      "sha256": "f6726e57244a86fd7136243735dee497e809df3853be79929c68ede09e4879e1"
+      "sha256": "f6a9e388e409ae91c734d9ae9774b9b631b74cf8e145f27b13bba988b3bcbbdb"
     },
     "03-other-frame": {
       "key": "frame-8",

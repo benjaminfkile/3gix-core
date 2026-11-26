@@ -572,7 +572,7 @@ mod tests {
             origin_utc_ms: 1_763_130_000_000,
             span_seconds: 3600,
             span_index: 2,
-            key: "4-12-1024-2048-3071".parse().unwrap(),
+            key: "23-12-1024-2048-3071".parse().unwrap(),
         }
     }
 
@@ -580,13 +580,13 @@ mod tests {
     fn request_round_trip_and_layout() {
         let r = request();
         let b = encode_request(&r);
-        assert_eq!(b.len(), REQUEST_HEADER_LEN + 19);
+        assert_eq!(b.len(), REQUEST_HEADER_LEN + 20);
         assert_eq!(&b[0..8], b"3GXQ\x01\x00\x00\x00");
         assert_eq!(&b[8..16], &1_763_130_000_000i64.to_le_bytes());
         assert_eq!(&b[16..24], &3600u64.to_le_bytes());
         assert_eq!(&b[24..32], &2u64.to_le_bytes());
-        assert_eq!(&b[32..36], &19u32.to_le_bytes());
-        assert_eq!(&b[36..], b"4-12-1024-2048-3071");
+        assert_eq!(&b[32..36], &20u32.to_le_bytes());
+        assert_eq!(&b[36..], b"23-12-1024-2048-3071");
         assert_eq!(decode_request(&b), Ok(r));
 
         let reg = ModuleRequest {

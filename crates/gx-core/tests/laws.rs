@@ -10,7 +10,7 @@ use gx_core::registry::{Frame, FrameTree, Registry, ROOT_PARENT};
 use gx_core::units::{Kilograms, Meters, Quat, Seconds, Vec3};
 
 const M: f64 = 1.0e30;
-const R: f64 = 1.0e11;
+const R: f64 = 1.7e11;
 
 fn frame(id: u64, parent: u64, mass: f64, position: Vec3, velocity: Vec3) -> Frame {
     Frame {
@@ -124,7 +124,7 @@ fn hierarchy() -> FrameSystem {
         Vec3::new(R, 0.0, 0.0),
         Vec3::new(0.0, v1, 0.0),
     );
-    child.angular_velocity = Vec3::new(1.0e-5, -2.0e-5, 7.0e-5);
+    child.angular_velocity = Vec3::new(1.0e-5, -2.0e-5, 2.2e-4);
     system(vec![
         frame(1, ROOT_PARENT, M, Vec3::zero(), Vec3::zero()),
         child,
@@ -198,7 +198,7 @@ fn floating_origin_casts_to_f32() {
     gc.orientation = gc_q;
     let mut s = system(vec![
         frame(1, ROOT_PARENT, M, Vec3::zero(), Vec3::zero()),
-        frame(2, 1, 0.0, child_pos, Vec3::new(-1.2e4, 3.0e4, 5.0e3)),
+        frame(2, 1, 0.0, child_pos, Vec3::new(-1.2e4, 1.9e4, 5.0e3)),
         gc,
     ]);
     let point = Vec3::new(0.125, -3.75, 2.5);

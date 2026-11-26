@@ -250,8 +250,8 @@ mod tests {
         let reg = Registry::new(
             Seconds::new(0.0),
             vec![
-                frame(1, ROOT_PARENT, 1.0e30, 0.0, 0.0),
-                frame(2, 1, 0.0, 1.0e11, 2.6e4),
+                frame(1, ROOT_PARENT, 2.7e30, 0.0, 0.0),
+                frame(2, 1, 0.0, 1.7e11, 3.3e4),
             ],
         )
         .unwrap();

@@ -78,7 +78,7 @@ fn requests() -> Vec<File> {
     let valid = [
         (
             "cell",
-            request(1_763_130_000_000, 3600, 2, "4-12-1024-2048-3071"),
+            request(1_763_130_000_000, 3600, 2, "23-12-1024-2048-3071"),
         ),
         ("registry", request(1_763_130_000_000, 0, 0, "registry")),
         ("static-cell", request(0, 0, 0, "30-1-1-0-1")),
@@ -137,8 +137,8 @@ fn requests() -> Vec<File> {
             (
                 "key-coordinate-out-of-range",
                 codes::REQUEST_KEY_MALFORMED,
-                // 4-12-4096-2048-3071: x is not below 2^12.
-                Box::new(move |b| b[key_at + 5..key_at + 9].copy_from_slice(b"4096")),
+                // 23-12-4096-2048-3071: x is not below 2^12.
+                Box::new(move |b| b[key_at + 6..key_at + 10].copy_from_slice(b"4096")),
             ),
             (
                 "key-empty",

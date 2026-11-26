@@ -330,13 +330,13 @@ mod tests {
 
     #[test]
     fn a_moving_frame_is_seen_where_it_was() {
-        let v = Vec3::new(0.0, 3.0e4, 0.0);
-        let h = history(Vec3::new(1.0e11, 0.0, 0.0), v);
+        let v = Vec3::new(0.0, 1.9e4, 0.0);
+        let h = history(Vec3::new(1.7e11, 0.0, 0.0), v);
         let t = Seconds::new(2000.0);
         let r = retarded_state(Vec3::zero(), t, &h, 2);
         let tr = r.light.time.value();
         // The frame moves in a straight line: x(t) = x0 + v t.
-        let x = Vec3::new(1.0e11, 3.0e4 * tr, 0.0);
+        let x = Vec3::new(1.7e11, 1.9e4 * tr, 0.0);
         assert!((r.state.position - x).length() < 1e-3);
         assert!((tr - (2000.0 - x.length() / C)).abs() < 1e-9);
         assert_eq!(r.state.velocity, v);

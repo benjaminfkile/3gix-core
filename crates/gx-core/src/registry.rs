@@ -745,14 +745,14 @@ mod tests {
             parent_frame_id: ROOT_PARENT,
             root_extent: Meters::new(1.0e13),
             max_depth: 12,
-            mass: Kilograms::new(2.0e30),
+            mass: Kilograms::new(2.7e30),
             position: Vec3::zero(),
             velocity: Vec3::zero(),
             orientation: Quat::new(0.0, 0.0, 0.6, 0.8),
-            angular_velocity: Vec3::new(0.0, 0.0, 2.9e-6),
+            angular_velocity: Vec3::new(0.0, 0.0, 4.1e-6),
             j2: 2.0e-7,
-            reference_radius: Meters::new(7.0e8),
-            principal_moments: Vec3::new(5.7e46, 5.7e46, 5.8e46),
+            reference_radius: Meters::new(8.3e8),
+            principal_moments: Vec3::new(8.2e46, 8.2e46, 8.3e46),
         }
     }
 
@@ -762,11 +762,11 @@ mod tests {
             parent_frame_id: parent,
             root_extent: Meters::new(1.0e8),
             max_depth: 20,
-            mass: Kilograms::new(6.0e24),
+            mass: Kilograms::new(3.4e24),
             position: Vec3::new(1.13e11, -2.0e9, 0.0),
-            velocity: Vec3::new(0.0, 2.98e4, 1.0),
+            velocity: Vec3::new(0.0, 1.9e4, 1.0),
             orientation: Quat::new(0.48, 0.6, 0.0, 0.64),
-            angular_velocity: Vec3::new(0.0, 0.0, 7.3e-5),
+            angular_velocity: Vec3::new(0.0, 0.0, 2.2e-4),
             j2: 0.0,
             reference_radius: Meters::new(0.0),
             principal_moments: Vec3::zero(),
@@ -839,12 +839,12 @@ mod tests {
         assert_eq!(f64_at(r, 16), 1.0e8);
         assert_eq!(r[24], 20);
         assert!(r[25..32].iter().all(|&x| x == 0));
-        assert_eq!(f64_at(r, 32), 6.0e24);
+        assert_eq!(f64_at(r, 32), 3.4e24);
         assert_eq!(f64_at(r, 40), 1.13e11);
-        assert_eq!(f64_at(r, 72), 2.98e4);
+        assert_eq!(f64_at(r, 72), 1.9e4);
         assert_eq!(f64_at(r, 88), 0.48);
         assert_eq!(f64_at(r, 112), 0.64);
-        assert_eq!(f64_at(r, 136), 7.3e-5);
+        assert_eq!(f64_at(r, 136), 2.2e-4);
         assert_eq!(f64_at(r, 144), 0.0);
         assert_eq!(f64_at(r, 152), 0.0);
         assert_eq!(f64_at(r, 176), 0.0);
@@ -853,10 +853,10 @@ mod tests {
         let r = &b[HEADER_LEN..];
         assert_eq!(r.len(), RECORD_LEN);
         assert_eq!(f64_at(r, 144), 2.0e-7);
-        assert_eq!(f64_at(r, 152), 7.0e8);
-        assert_eq!(f64_at(r, 160), 5.7e46);
-        assert_eq!(f64_at(r, 168), 5.7e46);
-        assert_eq!(f64_at(r, 176), 5.8e46);
+        assert_eq!(f64_at(r, 152), 8.3e8);
+        assert_eq!(f64_at(r, 160), 8.2e46);
+        assert_eq!(f64_at(r, 168), 8.2e46);
+        assert_eq!(f64_at(r, 176), 8.3e46);
     }
 
     type Edit = fn(&mut Frame);
@@ -890,9 +890,9 @@ mod tests {
             (629, |f| f.j2 = 1e-3),
             (629, |f| {
                 f.j2 = 1e-3;
-                f.reference_radius = Meters::new(-6.4e6);
+                f.reference_radius = Meters::new(-8.3e6);
             }),
-            (630, |f| f.reference_radius = Meters::new(6.4e6)),
+            (630, |f| f.reference_radius = Meters::new(8.3e6)),
             (631, |f| f.principal_moments.z = f64::NAN),
             (632, |f| f.principal_moments = Vec3::new(1.0, 1.0, 0.0)),
             (632, |f| f.principal_moments = Vec3::new(-1.0, 1.0, 1.0)),

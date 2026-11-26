@@ -102,7 +102,7 @@ cc -std=c99 -Wall -Wextra -Werror -pedantic -Iinclude \
     -o target/abi-check/abi_check
 LD_LIBRARY_PATH=target/release target/abi-check/abi_check \
     conformance/registry/valid/tree.bin \
-    conformance/matter/valid/res16-zstd.bin 4-5-17-3-30 \
+    conformance/matter/valid/res16-zstd.bin 11-5-17-3-30 \
     conformance/registry/invalid/610-version-1-registry.bin \
     conformance/manifest/valid/three.bin \
     conformance/manifest/invalid/906-not-sorted.bin \

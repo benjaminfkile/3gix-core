@@ -75,7 +75,7 @@ const CASES: [Case; 10] = [
         span_seconds: 0,
         span_index: 0,
         key: "7-2-3-1-2",
-        params: params(8.0e7, 5.5e3, 1500.0),
+        params: params(8.0e7, 4.6e3, 1500.0),
     },
     Case {
         name: "05-span",
@@ -83,7 +83,7 @@ const CASES: [Case; 10] = [
         span_seconds: 3600,
         span_index: 12_345,
         key: "42-5-17-3-30",
-        params: params(1.4e9, 0.1, 5800.0),
+        params: params(1.7e9, 0.1, 6300.0),
     },
     Case {
         name: "06-origin",
@@ -91,7 +91,7 @@ const CASES: [Case; 10] = [
         span_seconds: 72_000,
         span_index: 3,
         key: "3-10-1023-0-512",
-        params: params(1.3e7, 3.3e3, 250.0),
+        params: params(1.1e7, 2.7e3, 250.0),
     },
     Case {
         name: "07-deepest-largest-frame",
@@ -107,7 +107,7 @@ const CASES: [Case; 10] = [
         span_seconds: 0,
         span_index: 0,
         key: "1000-12-4095-4095-4095",
-        params: params(6.4e6, 1.2, 0.0),
+        params: params(8.3e6, 1.2, 0.0),
     },
     Case {
         name: "09-small-cube",
