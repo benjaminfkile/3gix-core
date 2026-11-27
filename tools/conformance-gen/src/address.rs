@@ -146,7 +146,7 @@ fn cases() -> Vec<Case> {
             "negative-origin",
             module_a,
             None,
-            Some(-86_400_000),
+            Some(-72_000_000),
             0,
             0,
             "1-3-7-0-5",
